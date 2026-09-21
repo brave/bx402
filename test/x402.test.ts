@@ -62,17 +62,39 @@ const RELAYED_URL = "https://bx402.example.com/res/v1/web/search";
 const RELAYED_DESCRIPTION = "Brave Search API - Web / Search";
 
 /** The resource a decoded payment carries, whatever the payer echoed. */
-function relayedResource(
-  decoded: { payload: PaymentPayload } | undefined,
-): { url?: string; description?: string } | undefined {
+function relayedResource(decoded: { payload: PaymentPayload } | undefined):
+  | {
+      url?: string;
+      description?: string;
+      serviceName?: string;
+      tags?: string[];
+    }
+  | undefined {
   if (decoded === undefined) {
     throw new Error("the payment decodes");
   }
   return (
     decoded.payload as {
-      resource?: { url?: string; description?: string };
+      resource?: { url?: string; description?: string; serviceName?: string; tags?: string[] };
     }
   ).resource;
+}
+
+/** The extensions a decoded payment carries, whatever the payer echoed. */
+function relayedExtensions(decoded: { payload: PaymentPayload } | undefined): {
+  bazaar?: { info?: unknown; routeTemplate?: unknown };
+  mppx?: unknown;
+} {
+  if (decoded === undefined) {
+    throw new Error("the payment decodes");
+  }
+  return (
+    (
+      decoded.payload as {
+        extensions?: { bazaar?: { info?: unknown; routeTemplate?: unknown }; mppx?: unknown };
+      }
+    ).extensions ?? {}
+  );
 }
 
 describe("x402", () => {
@@ -191,6 +213,8 @@ describe("x402", () => {
           resource: {
             url: "https://attacker.example/anything?q=private",
             description: "Cheap searches, pay attacker",
+            serviceName: "Not Brave",
+            tags: ["spam"],
           },
           accepted: entries[0],
           payload: { authorization: AUTHORIZATION },
@@ -201,6 +225,8 @@ describe("x402", () => {
 
     expect(resource?.url).toBe(RELAYED_URL);
     expect(resource?.description).toBe(RELAYED_DESCRIPTION);
+    expect(resource?.serviceName).toBe("Brave Search");
+    expect(resource?.tags).toEqual(["search", "web", "news", "images", "llm"]);
   });
 
   it("decode_states_the_resource_even_when_the_payer_echoed_none", () => {
@@ -220,13 +246,14 @@ describe("x402", () => {
 
   it("decode_relays_no_resource_for_a_request_it_cannot_name", () => {
     // A facilitator tolerates a payment naming no resource, but an empty or
-    // unparseable URL breaks it.
+    // unparseable URL breaks it, so resource and declaration both drop.
     const entries = offersFor(true, "/res/v1/web/search");
     const decodeFor = (requested: string) =>
       decodePayment(
         paymentHeaders({
           x402Version: 2,
           resource: { url: "https://bx402.example.com/res/v1/web/search?q=private" },
+          extensions: { bazaar: { info: {}, schema: {} } },
           accepted: entries[0],
           payload: { authorization: AUTHORIZATION },
         }),
@@ -241,8 +268,33 @@ describe("x402", () => {
     ]) {
       const decoded = decodeFor(requested);
       expect(relayedResource(decoded), requested).toBeUndefined();
+      expect(relayedExtensions(decoded).bazaar, requested).toBeUndefined();
       expect(decoded?.accepted).toEqual(entries[0]);
     }
+  });
+
+  it("decode_restates_the_declaration_the_payer_echoed", () => {
+    // A payer's `routeTemplate` would steer the listing away from the path it paid
+    // for, so ours goes out whatever arrived.
+    const entries = offersFor(true, "/res/v1/web/search");
+    const decoded = decodePayment(
+      paymentHeaders({
+        x402Version: 2,
+        accepted: entries[0],
+        extensions: {
+          bazaar: { info: {}, schema: {}, routeTemplate: "/anything" },
+          mppx: { info: { method: "GET" }, schema: { type: "object" } },
+        },
+        payload: { authorization: AUTHORIZATION },
+      }),
+      REQUESTED,
+    );
+
+    const extensions = relayedExtensions(decoded);
+    expect(extensions.bazaar?.routeTemplate).toBeUndefined();
+    expect(extensions.bazaar?.info).toEqual({ input: { type: "http", method: "GET" } });
+    // Anything else the payer echoed rides along, since its own reader checks it.
+    expect(extensions.mppx).toEqual({ info: { method: "GET" }, schema: { type: "object" } });
   });
 
   it("the_verify_call_carries_the_resource_this_service_served", async () => {
@@ -359,6 +411,8 @@ describe("x402", () => {
         url: "https://bx402.example.com/res/v1/web/search?q=rust",
         description: "Brave Search API - Web / Search",
         mimeType: "application/json",
+        serviceName: "Brave Search",
+        tags: ["search", "web", "news", "images", "llm"],
       },
       accepts: [
         {
@@ -385,7 +439,66 @@ describe("x402", () => {
           info: { method: "GET" },
           schema: { type: "object" },
         },
+        bazaar: {
+          info: { input: { type: "http", method: "GET" } },
+          schema: {
+            $schema: "https://json-schema.org/draft/2020-12/schema",
+            type: "object",
+            properties: {
+              input: {
+                type: "object",
+                properties: {
+                  type: { type: "string", const: "http" },
+                  method: { type: "string", enum: ["GET"] },
+                },
+                required: ["type", "method"],
+              },
+            },
+            required: ["input"],
+          },
+        },
       },
     });
+  });
+
+  it("the_catalog_metadata_stays_inside_what_a_facilitator_keeps", () => {
+    // The payload schema rejects the whole resource over an overlong name or tag,
+    // so an edit that overruns one would cost the payment, not just the listing.
+    const built = testClient();
+    const entry = challenge(built, "https://bx402.example.com/res/v1/web/search?q=rust", "GET");
+    const { resource } = decodeChallenge((entry as { value: string }).value) as {
+      resource: { serviceName: string; tags: string[] };
+    };
+
+    const printableAscii = /^[\x20-\x7e]+$/;
+    expect(resource.serviceName.length).toBeLessThanOrEqual(32);
+    expect(resource.serviceName).toMatch(printableAscii);
+    expect(resource.tags.length).toBeLessThanOrEqual(5);
+    for (const tag of resource.tags) {
+      expect(tag.length).toBeLessThanOrEqual(32);
+      expect(tag).toMatch(printableAscii);
+    }
+    // Compared case-insensitively, because a facilitator keeps the first of
+    // two tags that differ only in case and drops the second.
+    const lowercased = resource.tags.map((tag) => tag.toLowerCase());
+    expect(new Set(lowercased).size).toBe(resource.tags.length);
+  });
+
+  it("the_declaration_describes_the_get_call_even_for_a_head_request", () => {
+    // HEAD is a paid method too, but it returns no body, and the catalog entry has
+    // to name the call that returns what is being bought.
+    const built = testClient();
+    const entry = challenge(built, "https://bx402.example.com/res/v1/web/search?q=rust", "HEAD");
+    const { extensions } = decodeChallenge((entry as { value: string }).value) as {
+      extensions: {
+        mppx: { info: { method: string } };
+        bazaar: { info: { input: { method: string } } };
+      };
+    };
+
+    // The mppx binding still reflects the request, because it is what the
+    // client signs over.
+    expect(extensions.mppx.info.method).toBe("HEAD");
+    expect(extensions.bazaar.info.input.method).toBe("GET");
   });
 });

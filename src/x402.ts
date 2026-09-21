@@ -131,12 +131,59 @@ export function accepts(allowTestnet: boolean): Map<string, PaymentRequirements[
 }
 
 /**
+ * How this service is named in a facilitator's catalog. At most 32 printable
+ * ASCII characters.
+ */
+const SERVICE_NAME = "Brave Search";
+
+/**
+ * Catalog keywords for the service as a whole, since a catalog keeps no tags per
+ * path. At most five, under the same limit as the name. A catalog keeps the first
+ * five it can read and counts two that differ only in case as one.
+ */
+const SERVICE_TAGS = ["search", "web", "news", "images", "llm"];
+
+/**
+ * How to call a paid path. `info` states the call and `schema` is the JSON Schema
+ * it must satisfy.
+ *
+ * One value serves every path:
+ *
+ * - every paid path is a GET, and no parameter is required.
+ * - parameters are left out rather than guessed, since this service forwards a
+ *   query string without reading it.
+ * - the method stays GET for a HEAD request, because only GET returns the data
+ *   being bought.
+ */
+const BAZAAR_DECLARATION = {
+  info: { input: { type: "http", method: "GET" } },
+  schema: {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    type: "object",
+    properties: {
+      input: {
+        type: "object",
+        properties: {
+          type: { type: "string", const: "http" },
+          method: { type: "string", enum: ["GET"] },
+        },
+        required: ["type", "method"],
+      },
+    },
+    required: ["input"],
+  },
+};
+
+/**
  * The route binding mppx needs before it will sign, under the key it reads.
  *
  * Both members are required: dropping either fails the payment with "requires
  * route binding", even though nothing reads inside `schema`. We do not verify
  * the binding. It only feeds the client's nonce, and the facilitator is what
  * checks the signature.
+ *
+ * `bazaar` rides alongside it: a facilitator that keeps a catalog lists the path
+ * once a payment for it settles, and one that keeps none ignores the key.
  */
 function routeExtensions(method: string): Record<string, unknown> {
   return {
@@ -144,6 +191,7 @@ function routeExtensions(method: string): Record<string, unknown> {
       info: { method },
       schema: { type: "object" },
     },
+    bazaar: BAZAAR_DECLARATION,
   };
 }
 
@@ -238,6 +286,8 @@ export function challenge(
       url: resource,
       description: endpoint.description,
       mimeType: "application/json",
+      serviceName: SERVICE_NAME,
+      tags: SERVICE_TAGS,
     },
     accepts: offers,
     extensions: routeExtensions(method),
@@ -278,6 +328,8 @@ function relayedResource(requested: string): Record<string, unknown> | undefined
     url: `${url.origin}${url.pathname}`,
     description: endpoint.description,
     mimeType: "application/json",
+    serviceName: SERVICE_NAME,
+    tags: SERVICE_TAGS,
   };
 }
 
@@ -462,10 +514,11 @@ const EIP3009_NONCE = /^0x[0-9a-fA-F]{64}$/;
  * them and is refused here, before it can reach the screener or the
  * facilitator carrying no identity.
  *
- * The resource the client echoed is replaced with `relayedResource` before
- * anything leaves for the facilitator: a catalog records a settled payment
- * against the resource the payload names, so a payer would otherwise choose how
- * this service is listed. It is dropped for a request this service cannot name.
+ * The resource the client echoed is replaced with `relayedResource`, and the
+ * discovery declaration restated, before anything leaves for the facilitator: a
+ * catalog records a settled payment against the resource the payload names, so a
+ * payer would otherwise choose how this service is listed. Both are dropped for a
+ * request this service cannot name, since a catalog reads the pair.
  */
 export function decodePayment(
   headers: Headers,
@@ -511,10 +564,13 @@ export function decodePayment(
     return undefined;
   }
   const payer = from.toLowerCase();
+  const echoed = isRecord(payload.extensions) ? payload.extensions : undefined;
   const relayed = relayedResource(requested);
   delete payload.resource;
+  delete echoed?.bazaar;
   if (relayed !== undefined) {
     payload.resource = relayed;
+    payload.extensions = { ...echoed, bazaar: BAZAAR_DECLARATION };
   }
   return {
     payload: payload as PaymentPayload,

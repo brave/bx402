@@ -141,6 +141,10 @@ offers each enabled rail advertises, following MPP's payment discovery draft.
 `docs.llms`. Both are free and cached for five minutes; discovery is advisory, and the
 `402` challenge stays authoritative.
 
+The x402 challenge also declares how to call each paid path under `extensions.bazaar`, so
+a facilitator that keeps a catalog can list the endpoint once a payment for it settles.
+Facilitators that keep no catalog ignore the declaration.
+
 ## Networks
 
 Both rails charge the same price for the same endpoint, to the same treasury, in base
