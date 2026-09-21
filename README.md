@@ -175,25 +175,6 @@ mppx pays either rail. It reaches x402 through its own protocol adapter, which r
 facilitator like any other x402 payment. The `mppx` entry in `extensions` carries the route
 binding it requires before it will sign.
 
-## Restricted-address screening
-
-The proxy can refuse payments from prohibited addresses by checking each payer against a
-restricted-address list kept in a private S3 bucket (one `HeadObject` per lookup).
-Screening is off by default and is controlled by a single variable:
-
-- `RESTRICTED_ADDRESS_S3_BUCKET` (optional): the bucket holding the list. Unset or empty
-  turns screening off. When set, the service probes the bucket once at startup and refuses
-  to start if it cannot reach it, so it never serves traffic with a broken screener.
-
-AWS credentials and region come from the standard AWS resolution chain (`AWS_PROFILE`,
-`AWS_REGION`, `~/.aws`, or an attached IAM role), so no AWS keys live in the app config.
-The startup banner reports the outcome:
-
-```
-restricted address screening: ✓ enabled (bucket=<name>)
-restricted address screening: ✗ disabled (RESTRICTED_ADDRESS_S3_BUCKET not set)
-```
-
 ## Metrics
 
 Prometheus metrics are served on port `8090`, on a listener of its own; `8080` keeps
