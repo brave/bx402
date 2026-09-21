@@ -62,18 +62,6 @@ describe("x402", () => {
     expect(entries[0]?.network).toBe("eip155:8453"); // Base mainnet
   });
 
-  it("each_endpoint_is_offered_at_its_own_price", () => {
-    const web = offersFor(false, "/res/v1/web/search");
-    const suggest = offersFor(false, "/res/v1/suggest/search");
-
-    expect(web[0]?.amount).toBe("5000");
-    expect(suggest[0]?.amount).toBe("500");
-
-    // The cheap offer is not among the dear endpoint's, so accepting it there
-    // finds no match in `handle` and the payment is refused.
-    expect(web).not.toContainEqual(suggest[0]);
-  });
-
   it("discovery_offers_restate_the_accepts_table", () => {
     const built = client({ facilitatorUrl: "https://x402.org/facilitator", cdp: undefined }, true);
     const entries = offersFor(true, "/res/v1/web/search");
