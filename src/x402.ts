@@ -308,7 +308,7 @@ export function challenge(
  * service.
  *
  * `undefined` for a request this service cannot name, which relays no resource at
- * all: no host, a scheme that is not HTTP, or a path it does not sell.
+ * all: no host, a scheme other than HTTPS, or a path it does not sell.
  */
 function relayedResource(requested: string): Record<string, unknown> | undefined {
   let url: URL;
@@ -317,7 +317,7 @@ function relayedResource(requested: string): Record<string, unknown> | undefined
   } catch {
     return undefined;
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
+  if (url.protocol !== "https:") {
     return undefined;
   }
   const endpoint = findEndpoint(url.pathname);

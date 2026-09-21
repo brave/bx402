@@ -264,6 +264,7 @@ describe("x402", () => {
       "/res/v1/web/search?q=rust",
       "not a url at all",
       "file:///res/v1/web/search?q=rust",
+      "http://bx402.example.com/res/v1/web/search?q=rust",
       "https://bx402.example.com/res/v1/nothing/we/sell",
     ]) {
       const decoded = decodeFor(requested);
