@@ -9,9 +9,6 @@
 /** Brave's Web Search and LLM Context rate, $5.00 per 1,000 requests. */
 const SEARCH_RATE = 5_000;
 
-/** Brave's Autosuggest and Spellcheck rate, $5.00 per 10,000 requests. */
-export const UTILITY_RATE = 500;
-
 /** One paid endpoint: the path we serve, what it costs, and how we label it. */
 export interface Endpoint {
   /**
@@ -35,11 +32,17 @@ export interface Endpoint {
  * Every endpoint a client can pay for.
  *
  * Prices come from Brave's published rates. The rate card names only Web Search
- * and LLM Context, Autosuggest, and Spellcheck; the other search endpoints are
- * charged the Web rate, which never bills under the published tier.
+ * and LLM Context; the other search endpoints are charged the Web rate, which
+ * never bills under the published tier.
  *
- * The Answers API is absent on purpose. It is metered per query and per token,
- * which a fixed price cannot express.
+ * Two kinds of endpoint are absent on purpose:
+ *
+ * - the Answers API, which is metered per query and per token, and so cannot be
+ *   sold at one fixed price.
+ * - Autosuggest and Spellcheck, which Brave prices at $0.0005 a query, while the
+ *   facilitator takes about $0.001 for every payment it settles. One payment per
+ *   query would cost more to collect than the query is worth, so these can only be
+ *   sold once many queries settle together as one payment.
  */
 export const ENDPOINTS: readonly Endpoint[] = [
   {
@@ -86,16 +89,6 @@ export const ENDPOINTS: readonly Endpoint[] = [
     path: "/res/v1/local/descriptions",
     priceBaseUnits: SEARCH_RATE,
     description: "Brave Search API - Local / Descriptions",
-  },
-  {
-    path: "/res/v1/suggest/search",
-    priceBaseUnits: UTILITY_RATE,
-    description: "Brave Search API - Autosuggest",
-  },
-  {
-    path: "/res/v1/spellcheck/search",
-    priceBaseUnits: UTILITY_RATE,
-    description: "Brave Search API - Spellcheck",
   },
 ];
 

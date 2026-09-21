@@ -234,11 +234,16 @@ describe("app", () => {
   });
 
   it("an_unsold_endpoint_is_404_not_a_payable_402", async () => {
-    // The Answers API is deliberately not sold.
-    const response = await (await buildApp(testConfig(), undefined, new Metrics())).request(
+    const hono = await buildApp(testConfig(), undefined, new Metrics());
+    // The Answers API, Autosuggest and Spellcheck are deliberately not sold.
+    for (const path of [
       "/res/v1/chat/completions",
-    );
-    expect(response.status).toBe(404);
+      "/res/v1/suggest/search",
+      "/res/v1/spellcheck/search",
+    ]) {
+      const response = await hono.request(path);
+      expect(response.status, path).toBe(404);
+    }
   });
 
   it("unsupported_method_is_405_not_a_payable_402", async () => {
@@ -412,18 +417,28 @@ describe("app", () => {
     }
   });
 
-  // Paying one endpoint's price does not buy a dearer one. The payment is well
-  // formed and accepts an offer we really do advertise, just not for the path it
-  // is sent to, so only the per-path lookup refuses it.
-  it("a_cheap_endpoints_payment_does_not_buy_a_dear_one", async () => {
-    const hono = await buildApp(testConfig(), undefined, new Metrics());
+  // A payer cannot name its own price. This payment decodes and carries a
+  // plausible payer, and the path it is sent to is one we sell, so only the
+  // lookup for the offer it claims to accept refuses it.
+  it("a_payment_at_a_price_we_never_advertised_is_refused", async () => {
+    const metrics = new Metrics();
+    const hono = await buildApp(testConfig(), undefined, metrics);
 
     // Refused before the facilitator is consulted, which is why an unreachable
     // facilitator here still yields a 402 rather than a 502.
     const response = await hono.request("/res/v1/web/search?q=rust", {
-      headers: { "payment-signature": paymentSignature("/res/v1/suggest/search") },
+      headers: {
+        "payment-signature": paymentSignature(
+          "/res/v1/web/search",
+          { authorization: TEST_AUTHORIZATION },
+          { amount: "1" },
+        ),
+      },
     });
     expect(response.status).toBe(402);
+    // The outcome proves which check refused it: the payment was read, then no
+    // advertised offer matched what it claimed to accept.
+    await assertPaymentOutcome(metrics, "x402", "no_offer");
   });
 
   it("cold_402_advertises_the_absolute_request_url_as_resource", async () => {

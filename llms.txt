@@ -41,15 +41,16 @@ charge the same price for the same path.
 | `/res/v1/local/place_search` | 5000       | $5/1k  |
 | `/res/v1/local/pois`         | 5000       | $5/1k  |
 | `/res/v1/local/descriptions` | 5000       | $5/1k  |
-| `/res/v1/suggest/search`     | 500        | $5/10k |
-| `/res/v1/spellcheck/search`  | 500        | $5/10k |
 
 A path outside this table is a `404`, never a payable `402`. The Answers API
 (`/res/v1/chat/completions`) is not sold: it bills per query and per token,
-which one fixed price cannot express.
+which one fixed price cannot express. Autosuggest (`/res/v1/suggest/search`) and
+Spellcheck (`/res/v1/spellcheck/search`) are not sold either: they cost less than
+the fee a facilitator takes for settling one payment, so they wait on settling
+many queries together as one payment.
 
-A payment is checked against the price of the path it is sent to. A credential
-bought for Autosuggest does not pay for a web search.
+A payment is checked against the price of the path it is sent to, so a payer
+cannot name its own price.
 
 Query parameters are forwarded to Brave unchanged. See the Brave Search API
 documentation (https://brave.com/search/api/) for what each path accepts.

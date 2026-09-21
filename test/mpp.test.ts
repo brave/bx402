@@ -111,12 +111,6 @@ describe("mpp", () => {
     expect(await challenge(built, "/res/v1/chat/completions")).toBeUndefined();
   });
 
-  it("each_endpoint_is_charged_at_its_own_price", async () => {
-    const built = await clientOn(testConfig(), MODERATO);
-    expect(built.charges.get(WEB_SEARCH_PATH)?.amount).toBe("0.005");
-    expect(built.charges.get("/res/v1/suggest/search")?.amount).toBe("0.0005");
-  });
-
   it("the_charge_follows_the_chain_and_pins_the_price", async () => {
     for (const chain of [MODERATO, MAINNET]) {
       const built = await clientOn(testConfig(), chain);

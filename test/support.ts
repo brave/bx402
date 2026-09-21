@@ -278,17 +278,23 @@ export async function signedTransactionCredentialHeader(): Promise<{
 /**
  * The `PAYMENT-SIGNATURE` value for a payment accepting the first offer we
  * advertise for `path`, carrying `payload` as the scheme payload.
+ *
+ * `accepted` is merged over that offer, so a test can send a payment claiming
+ * terms we never advertised.
  */
 export function paymentSignature(
   path: string,
   payload: Record<string, unknown> = {},
+  accepted: Record<string, unknown> = {},
   allowTestnet = true,
 ): string {
   const offers = accepts(allowTestnet).get(path);
   if (offers === undefined || offers[0] === undefined) {
     throw new Error(`${path} is a paid endpoint`);
   }
-  return Buffer.from(JSON.stringify({ accepted: offers[0], payload })).toString("base64");
+  return Buffer.from(JSON.stringify({ accepted: { ...offers[0], ...accepted }, payload })).toString(
+    "base64",
+  );
 }
 
 /** Decode a base64 `Payment-Required` challenge header back to JSON. */

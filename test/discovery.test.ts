@@ -103,11 +103,6 @@ describe("discovery", () => {
       "5000",
       "5000",
     ]);
-    expect(offersOf(doc, "/res/v1/suggest/search").map((offer) => offer.amount)).toEqual([
-      "500",
-      "500",
-      "500",
-    ]);
   });
 
   it("the_document_states_the_required_top_level_fields", async () => {

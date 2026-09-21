@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ENDPOINTS, findEndpoint, UTILITY_RATE } from "../src/endpoints.js";
+import { ENDPOINTS, findEndpoint } from "../src/endpoints.js";
 
 describe("endpoints", () => {
   it("every_path_is_listed_once", () => {
@@ -7,19 +7,16 @@ describe("endpoints", () => {
     expect(distinct.size).toBe(ENDPOINTS.length);
   });
 
-  it("the_utility_rate_applies_to_suggest_and_spellcheck", () => {
-    const utility = ENDPOINTS.filter((endpoint) => endpoint.priceBaseUnits === UTILITY_RATE).map(
-      (endpoint) => endpoint.path,
-    );
-    expect(utility).toEqual(["/res/v1/suggest/search", "/res/v1/spellcheck/search"]);
-  });
-
   it("find_matches_a_served_path_exactly", () => {
     const found = findEndpoint("/res/v1/images/search");
     expect(found?.priceBaseUnits).toBe(5_000);
 
-    // The Answers API is not sold, and a prefix of a served path is not a served path.
+    // Three paths are deliberately not sold: the Answers API, and the two that
+    // cost less than settling one payment. A prefix of a served path is not a
+    // served path either.
     expect(findEndpoint("/res/v1/chat/completions")).toBeUndefined();
+    expect(findEndpoint("/res/v1/suggest/search")).toBeUndefined();
+    expect(findEndpoint("/res/v1/spellcheck/search")).toBeUndefined();
     expect(findEndpoint("/res/v1/images")).toBeUndefined();
   });
 });

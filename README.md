@@ -105,8 +105,7 @@ verifying an MPP credential is what settles it. Only the payer needs funding.
 
 Every endpoint below is payable on both rails. Prices track Brave's published rates at
 cost, in base units (5000 = $0.005). Brave's rate card names a price for Web Search and
-LLM Context, Autosuggest, and Spellcheck; the other search endpoints are charged the Web
-rate.
+LLM Context; the other search endpoints are charged the Web rate.
 
 | Endpoint                       | Base units | Brave rate |
 | ------------------------------ | ---------- | ---------- |
@@ -119,15 +118,19 @@ rate.
 | `/res/v1/local/place_search`   | 5000       | $5/1k      |
 | `/res/v1/local/pois`           | 5000       | $5/1k      |
 | `/res/v1/local/descriptions`   | 5000       | $5/1k      |
-| `/res/v1/suggest/search`       | 500        | $5/10k     |
-| `/res/v1/spellcheck/search`    | 500        | $5/10k     |
 
 A path outside this table is a `404`, never a payable `402`, so the proxy forwards only
-the endpoints it sells. The Answers API (`/res/v1/chat/completions`) is not among them: it
-bills per query and per token, which one fixed price in a `402` cannot express.
+the endpoints it sells. Two kinds of endpoint are left out on purpose:
 
-A payment is checked against the price of the path it is sent to, so a credential bought
-for Autosuggest does not pay for a web search.
+- the Answers API (`/res/v1/chat/completions`) bills per query and per token, which one
+  fixed price in a `402` cannot express.
+- Autosuggest (`/res/v1/suggest/search`) and Spellcheck (`/res/v1/spellcheck/search`) cost
+  less than the fee a facilitator takes for settling one payment, so selling them a
+  payment per query would cost more to collect than the query is worth. They wait on
+  settling many queries together as one payment.
+
+A payment is checked against the price of the path it is sent to, so a payer cannot name
+its own price.
 
 ## Discovery
 
