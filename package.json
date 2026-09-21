@@ -1,6 +1,6 @@
 {
   "name": "bx402",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Micropayment proxy for the Brave Search API over x402 and MPP",
   "license": "MPL-2.0",
   "private": true,
