@@ -146,6 +146,7 @@ export function dispatch(ctx: Context): MiddlewareHandler {
         ctx.screener,
         ctx.metrics,
         endpoint,
+        absoluteUri(c.req.raw),
         c.req.raw.headers,
         async () => {
           await next();

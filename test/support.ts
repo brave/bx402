@@ -18,7 +18,7 @@ import type { Config } from "../src/config.js";
 import { Metrics } from "../src/metrics.js";
 import { challenge as mppChallenge, client as mppClient } from "../src/mpp.js";
 import { RestrictedAddressScreener } from "../src/screener.js";
-import { accepts } from "../src/x402.js";
+import { accepts, type Client as X402Client, client as x402Client } from "../src/x402.js";
 
 /**
  * A config whose every endpoint is parseable but unreachable, shared by the test
@@ -36,6 +36,18 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     allowTestnet: true,
     ...overrides,
   };
+}
+
+/**
+ * An x402 client over the test config's rail settings, so a test needing only a
+ * built rail does not restate how one is built.
+ */
+export function testClient(): X402Client {
+  const config = testConfig();
+  if (config.x402 === undefined) {
+    throw new Error("the test config enables the x402 rail");
+  }
+  return x402Client(config.x402, config.allowTestnet);
 }
 
 /**

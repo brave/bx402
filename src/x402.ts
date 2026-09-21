@@ -250,6 +250,37 @@ export function challenge(
   }
 }
 
+/**
+ * The resource a payment is relayed under, built from the request this service
+ * served rather than from anything the payer said about it.
+ *
+ * Origin and path only, so what was searched stays between the payer and this
+ * service.
+ *
+ * `undefined` for a request this service cannot name, which relays no resource at
+ * all: no host, a scheme that is not HTTP, or a path it does not sell.
+ */
+function relayedResource(requested: string): Record<string, unknown> | undefined {
+  let url: URL;
+  try {
+    url = new URL(requested);
+  } catch {
+    return undefined;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    return undefined;
+  }
+  const endpoint = findEndpoint(url.pathname);
+  if (endpoint === undefined) {
+    return undefined;
+  }
+  return {
+    url: `${url.origin}${url.pathname}`,
+    description: endpoint.description,
+    mimeType: "application/json",
+  };
+}
+
 /** The path part of a resource URL, or the whole string when it is not a URL. */
 function pathOf(resource: string): string {
   try {
@@ -302,12 +333,16 @@ function describeOffer(entry: PaymentRequirements): string {
  * - facilitator unreachable on verify: `502`.
  * - search fails (4xx or 5xx): relayed as is, settlement skipped.
  * - settlement fails: `502`, the response body withheld.
+ *
+ * `requested` is the absolute URL being paid for, which the payment is relayed as
+ * having bought.
  */
 export async function handle(
   client: Client,
   screener: RestrictedAddressScreener | undefined,
   metrics: Metrics,
   endpoint: string,
+  requested: string,
   headers: Headers,
   runSearch: () => Promise<Response>,
 ): Promise<Response> {
@@ -317,7 +352,7 @@ export async function handle(
     return response;
   };
 
-  const decoded = decodePayment(headers);
+  const decoded = decodePayment(headers, requested);
   if (decoded === undefined) {
     return ended(outcome.MALFORMED, paymentRejected(MALFORMED_PAYMENT));
   }
@@ -427,12 +462,15 @@ const EIP3009_NONCE = /^0x[0-9a-fA-F]{64}$/;
  * them and is refused here, before it can reach the screener or the
  * facilitator carrying no identity.
  *
- * The resource URL the client echoed is blanked before anything leaves for the
- * facilitator: verification covers the signature and the requirements, neither
- * of which names the resource, so what was searched stays between the payer
- * and this service.
+ * The resource the client echoed is replaced with `relayedResource` before
+ * anything leaves for the facilitator: a catalog records a settled payment
+ * against the resource the payload names, so a payer would otherwise choose how
+ * this service is listed. It is dropped for a request this service cannot name.
  */
-export function decodePayment(headers: Headers):
+export function decodePayment(
+  headers: Headers,
+  requested: string,
+):
   | {
       payload: PaymentPayload;
       accepted: PaymentRequirements;
@@ -473,12 +511,10 @@ export function decodePayment(headers: Headers):
     return undefined;
   }
   const payer = from.toLowerCase();
-  // A vacant URL is the shape the SDK itself treats as "no resource", so the
-  // field is blanked rather than dropped: any facilitator that expects the key
-  // still finds it, holding nothing.
-  const { resource } = payload;
-  if (isRecord(resource) && typeof resource.url === "string") {
-    resource.url = "";
+  const relayed = relayedResource(requested);
+  delete payload.resource;
+  if (relayed !== undefined) {
+    payload.resource = relayed;
   }
   return {
     payload: payload as PaymentPayload,

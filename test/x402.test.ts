@@ -12,7 +12,7 @@ import {
   offers,
   PAYMENT_REQUIRED_HEADER,
 } from "../src/x402.js";
-import { decodeChallenge, mockOrigin, restoreNetwork, testConfig } from "./support.js";
+import { decodeChallenge, mockOrigin, restoreNetwork, testClient } from "./support.js";
 
 /** The offers advertised for one paid path. */
 function offersFor(allowTestnet: boolean, path: string) {
@@ -52,6 +52,28 @@ function testCdpSecret(): string {
 
 /** The base URL of the Coinbase-hosted facilitator. */
 const CDP_FACILITATOR_URL = "https://api.cdp.coinbase.com/platform/v2/x402";
+
+/**
+ * The request a payment is made against in these tests, and what it is relayed as
+ * having bought: the same URL without its query.
+ */
+const REQUESTED = "https://bx402.example.com/res/v1/web/search?q=rust";
+const RELAYED_URL = "https://bx402.example.com/res/v1/web/search";
+const RELAYED_DESCRIPTION = "Brave Search API - Web / Search";
+
+/** The resource a decoded payment carries, whatever the payer echoed. */
+function relayedResource(
+  decoded: { payload: PaymentPayload } | undefined,
+): { url?: string; description?: string } | undefined {
+  if (decoded === undefined) {
+    throw new Error("the payment decodes");
+  }
+  return (
+    decoded.payload as {
+      resource?: { url?: string; description?: string };
+    }
+  ).resource;
+}
 
 describe("x402", () => {
   afterEach(restoreNetwork);
@@ -93,14 +115,15 @@ describe("x402", () => {
 
     const decoded = decodePayment(
       paymentHeaders({ accepted: entries[0], payload: { authorization: AUTHORIZATION } }),
+      REQUESTED,
     );
     expect(decoded?.accepted).toEqual(entries[0]);
     expect(decoded?.payer).toBe(AUTHORIZATION.from.toLowerCase());
 
     // A payload naming no offer at all cannot be read.
-    expect(decodePayment(paymentHeaders({ payload: { authorization: AUTHORIZATION } }))).toBe(
-      undefined,
-    );
+    expect(
+      decodePayment(paymentHeaders({ payload: { authorization: AUTHORIZATION } }), REQUESTED),
+    ).toBe(undefined);
   });
 
   it("a_payment_without_a_full_authorization_cannot_be_read", () => {
@@ -109,7 +132,7 @@ describe("x402", () => {
     // nonce of the wrong size, which must never become a replay key.
     const entries = offersFor(true, "/res/v1/web/search");
     const decode = (payload: unknown) =>
-      decodePayment(paymentHeaders({ accepted: entries[0], payload }));
+      decodePayment(paymentHeaders({ accepted: entries[0], payload }), REQUESTED);
 
     expect(decode({})).toBeUndefined();
     expect(decode({ authorization: { from: AUTHORIZATION.from } })).toBeUndefined();
@@ -126,9 +149,11 @@ describe("x402", () => {
     // bytes differ, but both name one authorization.
     const first = decodePayment(
       paymentHeaders({ accepted: entries[0], payload: { authorization: AUTHORIZATION } }),
+      REQUESTED,
     );
     const second = decodePayment(
       paymentHeaders({ payload: { authorization: AUTHORIZATION }, accepted: entries[0] }),
+      REQUESTED,
     );
 
     expect(first?.claim.key).toBe(
@@ -147,6 +172,7 @@ describe("x402", () => {
         accepted: entries[0],
         payload: { authorization: { ...AUTHORIZATION, validBefore } },
       }),
+      REQUESTED,
     );
 
     const window = (entries[0]?.maxTimeoutSeconds ?? 0) * 1000;
@@ -154,52 +180,76 @@ describe("x402", () => {
     expect(decoded?.claim.expires).toBeLessThanOrEqual(Date.now() + window);
   });
 
-  it("decode_blanks_the_resource_url_the_client_echoed", () => {
-    // What was searched is the payer's business. The facilitator verifies the
-    // signature and the requirements, neither of which names the resource, so
-    // the URL we relay leaves vacant instead of crossing to Coinbase.
+  it("decode_relays_the_resource_this_service_served_not_the_payers_claim", () => {
+    // A catalog records a settled payment against the resource the payload names,
+    // and the payer does not get to choose that.
     const entries = offersFor(true, "/res/v1/web/search");
-    const decoded = decodePayment(
-      paymentHeaders({
-        x402Version: 2,
-        resource: {
-          url: "https://bx402.example.com/res/v1/web/search?q=private",
-          description: "Brave Search API - Web / Search",
-        },
-        accepted: entries[0],
-        payload: { authorization: AUTHORIZATION },
-      }),
+    const resource = relayedResource(
+      decodePayment(
+        paymentHeaders({
+          x402Version: 2,
+          resource: {
+            url: "https://attacker.example/anything?q=private",
+            description: "Cheap searches, pay attacker",
+          },
+          accepted: entries[0],
+          payload: { authorization: AUTHORIZATION },
+        }),
+        REQUESTED,
+      ),
     );
-    if (decoded === undefined) {
-      throw new Error("the payment decodes");
-    }
-    const resource = (decoded.payload as { resource?: { url?: string; description?: string } })
-      .resource;
-    expect(resource?.url).toBe("");
-    expect(resource?.description).toBe("Brave Search API - Web / Search");
-    expect(decoded.accepted).toEqual(entries[0]);
+
+    expect(resource?.url).toBe(RELAYED_URL);
+    expect(resource?.description).toBe(RELAYED_DESCRIPTION);
   });
 
-  it("decode_tolerates_a_payload_without_a_resource", () => {
+  it("decode_states_the_resource_even_when_the_payer_echoed_none", () => {
+    // The resource is our own account of the request, so the listing does not
+    // depend on the payer having echoed one.
     const entries = offersFor(true, "/res/v1/web/search");
-    const decoded = decodePayment(
-      paymentHeaders({ accepted: entries[0], payload: { authorization: AUTHORIZATION } }),
+    const resource = relayedResource(
+      decodePayment(
+        paymentHeaders({ accepted: entries[0], payload: { authorization: AUTHORIZATION } }),
+        REQUESTED,
+      ),
     );
-    if (decoded === undefined) {
-      throw new Error("the payment decodes");
-    }
-    expect((decoded.payload as { resource?: unknown }).resource).toBeUndefined();
+
+    expect(resource?.url).toBe(RELAYED_URL);
+    expect(resource?.description).toBe(RELAYED_DESCRIPTION);
   });
 
-  it("the_verify_call_carries_a_vacant_resource_url", async () => {
+  it("decode_relays_no_resource_for_a_request_it_cannot_name", () => {
+    // A facilitator tolerates a payment naming no resource, but an empty or
+    // unparseable URL breaks it.
+    const entries = offersFor(true, "/res/v1/web/search");
+    const decodeFor = (requested: string) =>
+      decodePayment(
+        paymentHeaders({
+          x402Version: 2,
+          resource: { url: "https://bx402.example.com/res/v1/web/search?q=private" },
+          accepted: entries[0],
+          payload: { authorization: AUTHORIZATION },
+        }),
+        requested,
+      );
+
+    for (const requested of [
+      "/res/v1/web/search?q=rust",
+      "not a url at all",
+      "file:///res/v1/web/search?q=rust",
+      "https://bx402.example.com/res/v1/nothing/we/sell",
+    ]) {
+      const decoded = decodeFor(requested);
+      expect(relayedResource(decoded), requested).toBeUndefined();
+      expect(decoded?.accepted).toEqual(entries[0]);
+    }
+  });
+
+  it("the_verify_call_carries_the_resource_this_service_served", async () => {
     // A real client echoes the challenge's resource back, query string
     // included. The rail relays the decoded payload to the facilitator, so a
     // recording stand-in reads exactly what the SDK would serialize.
-    const config = testConfig();
-    const built = client(
-      config.x402 ?? { facilitatorUrl: "http://facilitator.invalid", cdp: undefined },
-      config.allowTestnet,
-    );
+    const built = testClient();
     let forwarded: { resource?: { url?: string }; accepted?: unknown } | undefined;
     built.facilitator = {
       verify: async (payload: PaymentPayload) => {
@@ -219,6 +269,7 @@ describe("x402", () => {
       undefined,
       new Metrics(),
       "/res/v1/web/search",
+      "https://bx402.example.com/res/v1/web/search?q=private",
       paymentHeaders({
         x402Version: 2,
         resource: {
@@ -232,10 +283,12 @@ describe("x402", () => {
     );
 
     expect(response.status).toBe(200);
-    // The URL the client echoed leaves vacant; the offer it accepted arrives
-    // unchanged.
-    expect(forwarded?.resource?.url).toBe("");
+    // The path and the offer the payer accepted arrive; the query does not.
+    expect(forwarded?.resource?.url).toBe(RELAYED_URL);
     expect(forwarded?.accepted).toEqual(entries[0]);
+    // Checked over the whole payload, not just the field the query came from, so a
+    // search term cannot reach the facilitator riding in some other field.
+    expect(JSON.stringify(forwarded)).not.toContain("private");
   });
 
   it("a_tampered_offer_matches_nothing_we_advertise", () => {
@@ -246,6 +299,7 @@ describe("x402", () => {
 
     const decoded = decodePayment(
       paymentHeaders({ accepted: discounted, payload: { authorization: AUTHORIZATION } }),
+      REQUESTED,
     );
     expect(decoded).toBeDefined();
     expect(entries).not.toContainEqual(decoded?.accepted);
@@ -292,11 +346,7 @@ describe("x402", () => {
   it("challenge_emits_the_full_payment_required_payload", () => {
     // Every offer field is spelled out so a change to the SDK's defaults fails
     // here instead of silently moving the charge.
-    const config = testConfig();
-    const built = client(
-      config.x402 ?? { facilitatorUrl: "http://facilitator.invalid", cdp: undefined },
-      config.allowTestnet,
-    );
+    const built = testClient();
     const entry = challenge(built, "https://bx402.example.com/res/v1/web/search?q=rust", "GET");
     expect(entry).toBeDefined();
     const { name, value } = entry as { name: string; value: string };
