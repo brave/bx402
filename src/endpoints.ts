@@ -35,7 +35,7 @@ export interface Endpoint {
  * and LLM Context; the other search endpoints are charged the Web rate, which
  * never bills under the published tier.
  *
- * Two kinds of endpoint are absent on purpose:
+ * Three kinds of endpoint are absent on purpose:
  *
  * - the Answers API, which is metered per query and per token, and so cannot be
  *   sold at one fixed price.
@@ -43,6 +43,7 @@ export interface Endpoint {
  *   facilitator takes about $0.001 for every payment it settles. One payment per
  *   query would cost more to collect than the query is worth, so these can only be
  *   sold once many queries settle together as one payment.
+ * - the Summarizer, which Brave has deprecated and may remove without notice.
  */
 export const ENDPOINTS: readonly Endpoint[] = [
   {
@@ -69,11 +70,6 @@ export const ENDPOINTS: readonly Endpoint[] = [
     path: "/res/v1/images/search",
     priceBaseUnits: SEARCH_RATE,
     description: "Brave Search API - Image / Search",
-  },
-  {
-    path: "/res/v1/summarizer/search",
-    priceBaseUnits: SEARCH_RATE,
-    description: "Brave Search API - Summarizer / Search",
   },
   {
     path: "/res/v1/local/place_search",
