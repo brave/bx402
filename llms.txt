@@ -37,7 +37,6 @@ charge the same price for the same path.
 | `/res/v1/news/search`        | 5000       | $5/1k  |
 | `/res/v1/videos/search`      | 5000       | $5/1k  |
 | `/res/v1/images/search`      | 5000       | $5/1k  |
-| `/res/v1/summarizer/search`  | 5000       | $5/1k  |
 | `/res/v1/local/place_search` | 5000       | $5/1k  |
 | `/res/v1/local/pois`         | 5000       | $5/1k  |
 | `/res/v1/local/descriptions` | 5000       | $5/1k  |
@@ -47,7 +46,8 @@ A path outside this table is a `404`, never a payable `402`. The Answers API
 which one fixed price cannot express. Autosuggest (`/res/v1/suggest/search`) and
 Spellcheck (`/res/v1/spellcheck/search`) are not sold either: they cost less than
 the fee a facilitator takes for settling one payment, so they wait on settling
-many queries together as one payment.
+many queries together as one payment. The Summarizer (`/res/v1/summarizer/search`)
+is not sold: Brave has deprecated it.
 
 A payment is checked against the price of the path it is sent to, so a payer
 cannot name its own price.

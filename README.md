@@ -114,13 +114,12 @@ LLM Context; the other search endpoints are charged the Web rate.
 | `/res/v1/news/search`          | 5000       | $5/1k      |
 | `/res/v1/videos/search`        | 5000       | $5/1k      |
 | `/res/v1/images/search`        | 5000       | $5/1k      |
-| `/res/v1/summarizer/search`    | 5000       | $5/1k      |
 | `/res/v1/local/place_search`   | 5000       | $5/1k      |
 | `/res/v1/local/pois`           | 5000       | $5/1k      |
 | `/res/v1/local/descriptions`   | 5000       | $5/1k      |
 
 A path outside this table is a `404`, never a payable `402`, so the proxy forwards only
-the endpoints it sells. Two kinds of endpoint are left out on purpose:
+the endpoints it sells. Three kinds of endpoint are left out on purpose:
 
 - the Answers API (`/res/v1/chat/completions`) bills per query and per token, which one
   fixed price in a `402` cannot express.
@@ -128,6 +127,8 @@ the endpoints it sells. Two kinds of endpoint are left out on purpose:
   less than the fee a facilitator takes for settling one payment, so selling them a
   payment per query would cost more to collect than the query is worth. They wait on
   settling many queries together as one payment.
+- the Summarizer (`/res/v1/summarizer/search`) is deprecated by Brave and may be removed
+  without notice.
 
 A payment is checked against the price of the path it is sent to, so a payer cannot name
 its own price.
