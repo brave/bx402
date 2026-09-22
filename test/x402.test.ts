@@ -108,6 +108,13 @@ function declarationFor(requested: string): unknown {
   return (decodeChallenge(entry.value) as { extensions: { bazaar: unknown } }).extensions.bazaar;
 }
 
+/**
+ * The most a cold `402` header may take. A client echoes the challenge's resource
+ * and extensions back in `PAYMENT-SIGNATURE`, and common proxies refuse a request
+ * header over 8 KB. The rest is left for the signature the client adds.
+ */
+const CHALLENGE_HEADER_LIMIT = 6 * 1024;
+
 describe("x402", () => {
   afterEach(restoreNetwork);
 
@@ -522,6 +529,16 @@ describe("x402", () => {
       const listed = extractDiscoveryInfo(decoded.payload, decoded.accepted);
       expect(listed?.resourceUrl, path).toBe(`https://bx402.example.com${path}`);
       expect(listed?.discoveryInfo, path).toEqual((declaration as { info: unknown }).info);
+    }
+  });
+
+  it("every_challenge_fits_in_one_request_header", () => {
+    // Measured with the longest query Brave accepts, since the challenge names
+    // the URL it was served for.
+    const longest = "q".repeat(600);
+    for (const { path } of ENDPOINTS) {
+      const entry = challenge(testClient(), `https://bx402.example.com${path}?q=${longest}`, "GET");
+      expect(entry?.value.length, path).toBeLessThanOrEqual(CHALLENGE_HEADER_LIMIT);
     }
   });
 });
