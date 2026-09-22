@@ -120,3 +120,41 @@ export const LLM_CONTEXT: Call = {
     },
   },
 };
+
+export const NEWS_SEARCH: Call = {
+  params: pagedSearch(400, 50, "strict"),
+  required: ["q"],
+  query: { q: "brave browser", freshness: "pm" },
+  response: {
+    type: "news",
+    query: { original: "brave browser" },
+    results: [
+      {
+        type: "news_result",
+        title: "Brave's browser one-ups Chrome with its new support for email aliases | TechCrunch",
+        url: "https://techcrunch.com/2026/08/28/braves-browser-one-ups-chrome-with-its-new-support-for-email-aliases/",
+        age: "4 weeks ago",
+        page_age: "2026-08-28T18:50:00",
+      },
+    ],
+  },
+};
+
+export const VIDEO_SEARCH: Call = {
+  params: pagedSearch(400, 50, "moderate"),
+  required: ["q"],
+  query: { q: "brave browser", count: 5 },
+  response: {
+    type: "videos",
+    query: { original: "brave browser" },
+    results: [
+      {
+        type: "video_result",
+        title: "Brave Just Released a Paid Browser: Here's What You Need to Know - YouTube",
+        url: "https://www.youtube.com/watch?v=3i5KH0l895o",
+        age: "April 17, 2026",
+        video: { duration: "08:38", creator: "Techlore", publisher: "YouTube" },
+      },
+    ],
+  },
+};
