@@ -87,3 +87,36 @@ export const WEB_SEARCH: Call = {
     },
   },
 };
+
+export const LLM_CONTEXT: Call = {
+  params: {
+    q: searchQuery(600),
+    count: count(50, 20),
+    country: COUNTRY,
+    search_lang: SEARCH_LANG,
+    freshness: FRESHNESS,
+    maximum_number_of_urls: { type: "integer", minimum: 1, maximum: 50, default: 20 },
+    maximum_number_of_tokens: { type: "integer", minimum: 1024, maximum: 32768, default: 8192 },
+  },
+  required: ["q"],
+  query: { q: "brave browser", maximum_number_of_tokens: 2048 },
+  response: {
+    grounding: {
+      generic: [
+        {
+          url: "https://brave.com/",
+          title: "The browser that puts you first | Brave",
+          snippets: [
+            "The Brave browser is a fast, private and secure web browser for PC, Mac and mobile.",
+          ],
+        },
+      ],
+    },
+    sources: {
+      "https://brave.com/": {
+        title: "The browser that puts you first | Brave",
+        hostname: "brave.com",
+      },
+    },
+  },
+};
