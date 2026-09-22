@@ -51,6 +51,14 @@ const FRESHNESS: Param = {
   description: "pd, pw, pm, py, or a range like 2026-01-01to2026-06-30",
 };
 
+const IDS: Param = {
+  type: "array",
+  items: { type: "string" },
+  minItems: 1,
+  maxItems: 20,
+  description: "Location ids from web or place search, valid for 8 hours. Repeat as ids=a&ids=b",
+};
+
 const SAFESEARCH_LEVELS = ["off", "moderate", "strict"];
 
 /** The parameters web, news, and video search share. */
@@ -213,4 +221,22 @@ export const PLACE_SEARCH: Call = {
   required: [],
   query: { q: "coffee", location: "san francisco ca united states", count: 5 },
   response: { type: "locations", query: { original: "coffee" }, results: [PLACE] },
+};
+
+/** What both lookups by location id take. */
+const BY_IDS = { params: { ids: IDS }, required: ["ids"], query: { ids: [PLACE.id] } };
+
+export const LOCAL_POIS: Call = { ...BY_IDS, response: { results: [PLACE] } };
+
+export const LOCAL_DESCRIPTIONS: Call = {
+  ...BY_IDS,
+  response: {
+    results: [
+      {
+        type: "local_description",
+        id: PLACE.id,
+        description: "Blue Bottle Coffee is a cafe on Mint Street in San Francisco.",
+      },
+    ],
+  },
 };
