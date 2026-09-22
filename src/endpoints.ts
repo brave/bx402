@@ -36,7 +36,7 @@ export interface Endpoint {
    * convert rather than read this directly.
    */
   readonly priceBaseUnits: number;
-  /** Label for this endpoint in the payment challenge. */
+  /** What the endpoint returns, when to call it, and its main query parameters. */
   readonly description: string;
   /** How to call it. */
   readonly call: Call;
@@ -63,49 +63,57 @@ export const ENDPOINTS: readonly Endpoint[] = [
   {
     path: "/res/v1/web/search",
     priceBaseUnits: SEARCH_RATE,
-    description: "Brave Search API - Web / Search",
+    description:
+      "Web search over Brave's independent index. Returns ranked pages with title, URL, and snippet, plus news, video, and discussion results when relevant. Use it to find current sources on any topic. Pass q, and optionally count, offset, country, search_lang, and freshness.",
     call: WEB_SEARCH,
   },
   {
     path: "/res/v1/llm/context",
     priceBaseUnits: SEARCH_RATE,
-    description: "Brave Search API - LLM Context",
+    description:
+      "Web search that returns page text ready for an LLM prompt. Picks the passages most relevant to q from the top results and groups them by source URL. Use it to ground an answer in current web content without fetching pages. Size the context with maximum_number_of_tokens and maximum_number_of_urls.",
     call: LLM_CONTEXT,
   },
   {
     path: "/res/v1/news/search",
     priceBaseUnits: SEARCH_RATE,
-    description: "Brave Search API - News / Search",
+    description:
+      "News search over Brave's independent index. Returns recent articles with title, URL, source, and age. Use it for current events, where web search can surface older pages. Pass q, and optionally count, country, and freshness.",
     call: NEWS_SEARCH,
   },
   {
     path: "/res/v1/videos/search",
     priceBaseUnits: SEARCH_RATE,
-    description: "Brave Search API - Video / Search",
+    description:
+      "Video search over Brave's independent index. Returns videos with title, URL, duration, creator, and publisher. Use it to find tutorials, reviews, and talks on a topic. Pass q, and optionally count, country, and freshness.",
     call: VIDEO_SEARCH,
   },
   {
     path: "/res/v1/images/search",
     priceBaseUnits: SEARCH_RATE,
-    description: "Brave Search API - Image / Search",
+    description:
+      "Image search over Brave's independent index. Returns images with the page they appear on, the image URL, a thumbnail, and the size. Use it to find pictures of a subject. Pass q, and optionally count and safesearch.",
     call: IMAGE_SEARCH,
   },
   {
     path: "/res/v1/local/place_search",
     priceBaseUnits: SEARCH_RATE,
-    description: "Brave Search API - Place / Search",
+    description:
+      "Place search over more than 200 million places. Returns businesses and points of interest with address, coordinates, rating, and a temporary id. Use it to find places in an area. Pass q and a location such as san francisco ca united states, or latitude and longitude.",
     call: PLACE_SEARCH,
   },
   {
     path: "/res/v1/local/pois",
     priceBaseUnits: SEARCH_RATE,
-    description: "Brave Search API - Local / POIs",
+    description:
+      "Details for places found by web or place search: address, opening hours, phone, rating, and reviews. Use it after a search returns location ids. Pass the ids, repeated as ids=a&ids=b. Ids expire after about 8 hours.",
     call: LOCAL_POIS,
   },
   {
     path: "/res/v1/local/descriptions",
     priceBaseUnits: SEARCH_RATE,
-    description: "Brave Search API - Local / Descriptions",
+    description:
+      "AI-generated descriptions of places found by web or place search. Use it to learn what a place is before recommending it. Pass the location ids, repeated as ids=a&ids=b. Ids expire after about 8 hours.",
     call: LOCAL_DESCRIPTIONS,
   },
 ];
