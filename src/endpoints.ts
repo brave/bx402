@@ -6,6 +6,18 @@
  * The table is protocol-neutral: it names no rail and imports nothing from one.
  */
 
+import {
+  type Call,
+  IMAGE_SEARCH,
+  LLM_CONTEXT,
+  LOCAL_DESCRIPTIONS,
+  LOCAL_POIS,
+  NEWS_SEARCH,
+  PLACE_SEARCH,
+  VIDEO_SEARCH,
+  WEB_SEARCH,
+} from "./calls.js";
+
 /** Brave's Web Search and LLM Context rate, $5.00 per 1,000 requests. */
 const SEARCH_RATE = 5_000;
 
@@ -26,6 +38,8 @@ export interface Endpoint {
   readonly priceBaseUnits: number;
   /** Label for this endpoint in the payment challenge. */
   readonly description: string;
+  /** How to call it. */
+  readonly call: Call;
 }
 
 /**
@@ -50,41 +64,49 @@ export const ENDPOINTS: readonly Endpoint[] = [
     path: "/res/v1/web/search",
     priceBaseUnits: SEARCH_RATE,
     description: "Brave Search API - Web / Search",
+    call: WEB_SEARCH,
   },
   {
     path: "/res/v1/llm/context",
     priceBaseUnits: SEARCH_RATE,
     description: "Brave Search API - LLM Context",
+    call: LLM_CONTEXT,
   },
   {
     path: "/res/v1/news/search",
     priceBaseUnits: SEARCH_RATE,
     description: "Brave Search API - News / Search",
+    call: NEWS_SEARCH,
   },
   {
     path: "/res/v1/videos/search",
     priceBaseUnits: SEARCH_RATE,
     description: "Brave Search API - Video / Search",
+    call: VIDEO_SEARCH,
   },
   {
     path: "/res/v1/images/search",
     priceBaseUnits: SEARCH_RATE,
     description: "Brave Search API - Image / Search",
+    call: IMAGE_SEARCH,
   },
   {
     path: "/res/v1/local/place_search",
     priceBaseUnits: SEARCH_RATE,
     description: "Brave Search API - Place / Search",
+    call: PLACE_SEARCH,
   },
   {
     path: "/res/v1/local/pois",
     priceBaseUnits: SEARCH_RATE,
     description: "Brave Search API - Local / POIs",
+    call: LOCAL_POIS,
   },
   {
     path: "/res/v1/local/descriptions",
     priceBaseUnits: SEARCH_RATE,
     description: "Brave Search API - Local / Descriptions",
+    call: LOCAL_DESCRIPTIONS,
   },
 ];
 

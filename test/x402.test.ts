@@ -97,6 +97,15 @@ function relayedExtensions(decoded: { payload: PaymentPayload } | undefined): {
   );
 }
 
+/** The bazaar declaration the cold `402` advertises for `requested`. */
+function declarationFor(requested: string): unknown {
+  const entry = challenge(testClient(), requested, "GET");
+  if (entry === undefined) {
+    throw new Error(`${requested} is a paid endpoint`);
+  }
+  return (decodeChallenge(entry.value) as { extensions: { bazaar: unknown } }).extensions.bazaar;
+}
+
 describe("x402", () => {
   afterEach(restoreNetwork);
 
@@ -293,7 +302,7 @@ describe("x402", () => {
 
     const extensions = relayedExtensions(decoded);
     expect(extensions.bazaar?.routeTemplate).toBeUndefined();
-    expect(extensions.bazaar?.info).toEqual({ input: { type: "http", method: "GET" } });
+    expect(extensions.bazaar).toEqual(declarationFor(REQUESTED));
     // Anything else the payer echoed rides along, since its own reader checks it.
     expect(extensions.mppx).toEqual({ info: { method: "GET" }, schema: { type: "object" } });
   });
@@ -302,46 +311,47 @@ describe("x402", () => {
     // A real client echoes the challenge's resource back, query string
     // included. The rail relays the decoded payload to the facilitator, so a
     // recording stand-in reads exactly what the SDK would serialize.
-    const built = testClient();
-    let forwarded: { resource?: { url?: string }; accepted?: unknown } | undefined;
-    built.facilitator = {
-      verify: async (payload: PaymentPayload) => {
-        forwarded = payload as { resource?: { url?: string }; accepted?: unknown };
-        return { isValid: true };
-      },
-      settle: async () => ({
-        success: true,
-        transaction: "0xtxhash",
-        network: "eip155:84532",
-      }),
-    } as unknown as HTTPFacilitatorClient;
-
     const entries = offersFor(true, "/res/v1/web/search");
-    const response = await handle(
-      built,
-      undefined,
-      new Metrics(),
-      "/res/v1/web/search",
-      "https://bx402.example.com/res/v1/web/search?q=private",
-      paymentHeaders({
-        x402Version: 2,
-        resource: {
-          url: "https://bx402.example.com/res/v1/web/search?q=private",
-          description: "Brave Search API - Web / Search",
+    const forwardedFor = async (query: string) => {
+      const built = testClient();
+      let forwarded: { resource?: { url?: string }; accepted?: unknown } | undefined;
+      built.facilitator = {
+        verify: async (payload: PaymentPayload) => {
+          forwarded = payload as { resource?: { url?: string }; accepted?: unknown };
+          return { isValid: true };
         },
-        accepted: entries[0],
-        payload: { authorization: AUTHORIZATION },
-      }),
-      async () => new Response(JSON.stringify({ web: {} }), { status: 200 }),
-    );
+        settle: async () => ({
+          success: true,
+          transaction: "0xtxhash",
+          network: "eip155:84532",
+        }),
+      } as unknown as HTTPFacilitatorClient;
+      const requested = `https://bx402.example.com/res/v1/web/search?q=${query}`;
+      const response = await handle(
+        built,
+        undefined,
+        new Metrics(),
+        "/res/v1/web/search",
+        requested,
+        paymentHeaders({
+          x402Version: 2,
+          resource: { url: requested, description: "Brave Search API - Web / Search" },
+          accepted: entries[0],
+          payload: { authorization: AUTHORIZATION },
+        }),
+        async () => new Response(JSON.stringify({ web: {} }), { status: 200 }),
+      );
+      expect(response.status).toBe(200);
+      return forwarded;
+    };
 
-    expect(response.status).toBe(200);
+    const forwarded = await forwardedFor("private");
     // The path and the offer the payer accepted arrive; the query does not.
     expect(forwarded?.resource?.url).toBe(RELAYED_URL);
     expect(forwarded?.accepted).toEqual(entries[0]);
-    // Checked over the whole payload, not just the field the query came from, so a
-    // search term cannot reach the facilitator riding in some other field.
-    expect(JSON.stringify(forwarded)).not.toContain("private");
+    // Compared over the whole payload, not just the field the query came from, so
+    // a search term cannot reach the facilitator riding in some other field.
+    expect(await forwardedFor("something-else")).toEqual(forwarded);
   });
 
   it("a_tampered_offer_matches_nothing_we_advertise", () => {
@@ -440,24 +450,8 @@ describe("x402", () => {
           info: { method: "GET" },
           schema: { type: "object" },
         },
-        bazaar: {
-          info: { input: { type: "http", method: "GET" } },
-          schema: {
-            $schema: "https://json-schema.org/draft/2020-12/schema",
-            type: "object",
-            properties: {
-              input: {
-                type: "object",
-                properties: {
-                  type: { type: "string", const: "http" },
-                  method: { type: "string", enum: ["GET"] },
-                },
-                required: ["type", "method"],
-              },
-            },
-            required: ["input"],
-          },
-        },
+        // Checked field by field in the tests that follow.
+        bazaar: expect.any(Object),
       },
     });
   });

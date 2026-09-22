@@ -13,6 +13,7 @@ import { HTTPFacilitatorClient } from "@x402/core/server";
 import type { PaymentPayload, PaymentRequirements } from "@x402/core/types";
 import { findDefaultAsset, getDefaultAsset } from "@x402/evm";
 import { base, baseSepolia } from "viem/chains";
+import type { Call } from "./calls.js";
 import { ClaimStore } from "./claims.js";
 import type { X402Config } from "./config.js";
 import type { Offer } from "./discovery.js";
@@ -144,35 +145,42 @@ const SERVICE_NAME = "Brave Search";
 const SERVICE_TAGS = ["search", "web", "news", "images", "llm"];
 
 /**
- * How to call a paid path. `info` states the call and `schema` is the JSON Schema
- * it must satisfy.
+ * How to call a paid path. `info` states a sample call and what it returns, and
+ * `schema` is the JSON Schema the call must satisfy. A facilitator refuses a
+ * declaration whose `info` does not satisfy its own `schema`.
  *
- * One value serves every path:
- *
- * - every paid path is a GET, and no parameter is required.
- * - parameters are left out rather than guessed, since this service forwards a
- *   query string without reading it.
- * - the method stays GET for a HEAD request, because only GET returns the data
- *   being bought.
+ * The method stays GET for a HEAD request, because only GET returns the data
+ * being bought.
  */
-const BAZAAR_DECLARATION = {
-  info: { input: { type: "http", method: "GET" } },
-  schema: {
-    $schema: "https://json-schema.org/draft/2020-12/schema",
-    type: "object",
-    properties: {
-      input: {
-        type: "object",
-        properties: {
-          type: { type: "string", const: "http" },
-          method: { type: "string", enum: ["GET"] },
-        },
-        required: ["type", "method"],
-      },
+function bazaarDeclaration(call: Call): Record<string, unknown> {
+  return {
+    info: {
+      input: { type: "http", method: "GET", queryParams: call.query },
+      output: { type: "json", example: call.response },
     },
-    required: ["input"],
-  },
-};
+    schema: {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "object",
+      properties: {
+        input: {
+          type: "object",
+          properties: {
+            type: { type: "string", const: "http" },
+            method: { type: "string", enum: ["GET"] },
+            queryParams: { type: "object", properties: call.params, required: call.required },
+          },
+          required: ["type", "method"],
+        },
+        output: {
+          type: "object",
+          properties: { type: { type: "string" }, example: { type: "object" } },
+          required: ["type"],
+        },
+      },
+      required: ["input"],
+    },
+  };
+}
 
 /**
  * The route binding mppx needs before it will sign, under the key it reads.
@@ -185,13 +193,13 @@ const BAZAAR_DECLARATION = {
  * `bazaar` rides alongside it: a facilitator that keeps a catalog lists the path
  * once a payment for it settles, and one that keeps none ignores the key.
  */
-function routeExtensions(method: string): Record<string, unknown> {
+function routeExtensions(method: string, call: Call): Record<string, unknown> {
   return {
     mppx: {
       info: { method },
       schema: { type: "object" },
     },
-    bazaar: BAZAAR_DECLARATION,
+    bazaar: bazaarDeclaration(call),
   };
 }
 
@@ -290,7 +298,7 @@ export function challenge(
       tags: SERVICE_TAGS,
     },
     accepts: offers,
-    extensions: routeExtensions(method),
+    extensions: routeExtensions(method, endpoint.call),
   };
   try {
     return { name: PAYMENT_REQUIRED_HEADER, value: encodePaymentRequiredHeader(envelope) };
@@ -301,8 +309,9 @@ export function challenge(
 }
 
 /**
- * The resource a payment is relayed under, built from the request this service
- * served rather than from anything the payer said about it.
+ * The resource a payment is relayed under, and the declaration that goes with it,
+ * built from the request this service served rather than from anything the payer
+ * said about it.
  *
  * Origin and path only, so what was searched stays between the payer and this
  * service.
@@ -310,7 +319,9 @@ export function challenge(
  * `undefined` for a request this service cannot name, which relays no resource at
  * all: no host, a scheme other than HTTPS, or a path it does not sell.
  */
-function relayedResource(requested: string): Record<string, unknown> | undefined {
+function relayedResource(
+  requested: string,
+): { resource: Record<string, unknown>; declaration: Record<string, unknown> } | undefined {
   let url: URL;
   try {
     url = new URL(requested);
@@ -325,11 +336,14 @@ function relayedResource(requested: string): Record<string, unknown> | undefined
     return undefined;
   }
   return {
-    url: `${url.origin}${url.pathname}`,
-    description: endpoint.description,
-    mimeType: "application/json",
-    serviceName: SERVICE_NAME,
-    tags: SERVICE_TAGS,
+    resource: {
+      url: `${url.origin}${url.pathname}`,
+      description: endpoint.description,
+      mimeType: "application/json",
+      serviceName: SERVICE_NAME,
+      tags: SERVICE_TAGS,
+    },
+    declaration: bazaarDeclaration(endpoint.call),
   };
 }
 
@@ -569,8 +583,8 @@ export function decodePayment(
   delete payload.resource;
   delete echoed?.bazaar;
   if (relayed !== undefined) {
-    payload.resource = relayed;
-    payload.extensions = { ...echoed, bazaar: BAZAAR_DECLARATION };
+    payload.resource = relayed.resource;
+    payload.extensions = { ...echoed, bazaar: relayed.declaration };
   }
   return {
     payload: payload as PaymentPayload,
