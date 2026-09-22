@@ -34,6 +34,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.5.12",
     "@types/node": "^26.4.1",
+    "@x402/extensions": "2.25.0",
     "aws-sdk-client-mock": "^4.1.0",
     "typescript": "^7.0.2",
     "vitest": "^5.0.0"

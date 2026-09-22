@@ -1,7 +1,9 @@
 import { generateKeyPairSync } from "node:crypto";
 import type { HTTPFacilitatorClient } from "@x402/core/server";
 import type { PaymentPayload } from "@x402/core/types";
+import { extractDiscoveryInfo, validateDiscoveryExtension } from "@x402/extensions/bazaar";
 import { afterEach, describe, expect, it } from "vitest";
+import { ENDPOINTS } from "../src/endpoints.js";
 import { Metrics } from "../src/metrics.js";
 import {
   accepts,
@@ -495,5 +497,31 @@ describe("x402", () => {
     // client signs over.
     expect(extensions.mppx.info.method).toBe("HEAD");
     expect(extensions.bazaar.info.input.method).toBe("GET");
+  });
+
+  it("every_declaration_is_one_a_facilitator_accepts", () => {
+    // A facilitator refuses a declaration whose call does not satisfy its own
+    // schema, and settles the payment without listing it. These are the checks the
+    // x402 reference package runs.
+    for (const { path } of ENDPOINTS) {
+      const requested = `https://bx402.example.com${path}?q=rust`;
+      const declaration = declarationFor(requested);
+      expect(validateDiscoveryExtension(declaration as never), path).toEqual({ valid: true });
+
+      const decoded = decodePayment(
+        paymentHeaders({
+          x402Version: 2,
+          accepted: offersFor(true, path)[0],
+          payload: { authorization: AUTHORIZATION },
+        }),
+        requested,
+      );
+      if (decoded === undefined) {
+        throw new Error("the payment decodes");
+      }
+      const listed = extractDiscoveryInfo(decoded.payload, decoded.accepted);
+      expect(listed?.resourceUrl, path).toBe(`https://bx402.example.com${path}`);
+      expect(listed?.discoveryInfo, path).toEqual((declaration as { info: unknown }).info);
+    }
   });
 });
