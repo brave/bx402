@@ -158,3 +158,59 @@ export const VIDEO_SEARCH: Call = {
     ],
   },
 };
+
+export const IMAGE_SEARCH: Call = {
+  params: {
+    q: searchQuery(400),
+    count: count(200, 50),
+    country: COUNTRY,
+    search_lang: SEARCH_LANG,
+    safesearch: safesearch(["off", "strict"], "strict"),
+  },
+  required: ["q"],
+  query: { q: "brave lion", count: 10 },
+  response: {
+    type: "images",
+    query: { original: "brave lion" },
+    results: [
+      {
+        type: "image_result",
+        title: "'Be Brave like a Lion' poster",
+        url: "https://www.dreamstime.com/illustration/brave-lion.html",
+        source: "dreamstime.com",
+        properties: {
+          url: "https://thumbs.dreamstime.com/b/be-brave-like-lion-poster-motivational-typographic-quote-print-design-49824439.jpg",
+          width: 750,
+          height: 900,
+        },
+      },
+    ],
+  },
+};
+
+/** One place as Brave's place search and POI lookups return it. */
+const PLACE = {
+  type: "location_result",
+  id: "loc4FNMQJNOOCVHEB7UBOLN354ZYIDIYJ3RPRETERRY=",
+  title: "Blue Bottle Coffee",
+  url: "https://bluebottlecoffee.com",
+  coordinates: [37.7825, -122.4095],
+  postal_address: { displayAddress: "66 Mint St, San Francisco, CA 94103" },
+  rating: { ratingValue: 4.5, bestRating: 5, reviewCount: 1250 },
+  categories: ["Coffee & Tea", "Cafe"],
+};
+
+export const PLACE_SEARCH: Call = {
+  params: {
+    q: { type: "string", description: "What to find. Leave out for general places in the area" },
+    location: { type: "string", description: "Area such as san francisco ca united states" },
+    latitude: { type: "string", description: "-90 to 90, instead of location" },
+    longitude: { type: "string", description: "-180 to 180, instead of location" },
+    radius: { type: "string", description: "Meters around the coordinates to favor" },
+    count: count(100, 20),
+    country: COUNTRY,
+  },
+  required: [],
+  query: { q: "coffee", location: "san francisco ca united states", count: 5 },
+  response: { type: "locations", query: { original: "coffee" }, results: [PLACE] },
+};
