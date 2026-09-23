@@ -44,7 +44,7 @@ importers:
         version: 0.14.44(typescript@7.0.2)(zod@3.25.76)
       undici:
         specifier: ^8.10.2
-        version: 8.10.2
+        version: 8.11.0
       viem:
         specifier: ^2.56.3
         version: 2.56.3(typescript@7.0.2)(zod@3.25.76)
@@ -1437,8 +1437,8 @@ packages:
   undici-types@8.3.0:
     resolution: {integrity: sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ==}
 
-  undici@8.10.2:
-    resolution: {integrity: sha512-/y4/bH9YNU5hi9NIrpOuvGXFcxrj3CMrV+/AYpowAYTpHn8gX/XPFjNy766FPoYY0miQhdW977JFWKGNhBdwyQ==}
+  undici@8.11.0:
+    resolution: {integrity: sha512-AdzuGcAkzhbha3GgCSoUBx2P0quwym6qdFNCQz/fDGZc8w9XJ741wHUbt2kTmfPz+ZIOMkySFkiY7RXmiDDC8w==}
     engines: {node: '>=22.19.0'}
 
   viem@2.56.3:
@@ -2954,7 +2954,7 @@ snapshots:
 
   undici-types@8.3.0: {}
 
-  undici@8.10.2: {}
+  undici@8.11.0: {}
 
   viem@2.56.3(typescript@7.0.2)(zod@3.25.76):
     dependencies:
