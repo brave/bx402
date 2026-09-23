@@ -3,7 +3,7 @@ import type { HTTPFacilitatorClient } from "@x402/core/server";
 import type { PaymentPayload } from "@x402/core/types";
 import { extractDiscoveryInfo, validateDiscoveryExtension } from "@x402/extensions/bazaar";
 import { afterEach, describe, expect, it } from "vitest";
-import { ENDPOINTS } from "../src/endpoints.js";
+import { ENDPOINTS, findEndpoint } from "../src/endpoints.js";
 import { Metrics } from "../src/metrics.js";
 import {
   accepts,
@@ -61,7 +61,7 @@ const CDP_FACILITATOR_URL = "https://api.cdp.coinbase.com/platform/v2/x402";
  */
 const REQUESTED = "https://bx402.example.com/res/v1/web/search?q=rust";
 const RELAYED_URL = "https://bx402.example.com/res/v1/web/search";
-const RELAYED_DESCRIPTION = "Brave Search API - Web / Search";
+const RELAYED_DESCRIPTION = findEndpoint("/res/v1/web/search")?.description ?? "";
 
 /** The resource a decoded payment carries, whatever the payer echoed. */
 function relayedResource(decoded: { payload: PaymentPayload } | undefined):
@@ -429,7 +429,7 @@ describe("x402", () => {
       error: "Payment required",
       resource: {
         url: "https://bx402.example.com/res/v1/web/search?q=rust",
-        description: "Brave Search API - Web / Search",
+        description: RELAYED_DESCRIPTION,
         mimeType: "application/json",
         serviceName: "Brave Search",
         tags: ["search", "web", "news", "images", "llm"],
@@ -486,6 +486,15 @@ describe("x402", () => {
     // two tags that differ only in case and drops the second.
     const lowercased = resource.tags.map((tag) => tag.toLowerCase());
     expect(new Set(lowercased).size).toBe(resource.tags.length);
+  });
+
+  it("every_description_stays_inside_what_a_facilitator_accepts", () => {
+    // The CDP facilitator refuses to verify or settle a payment whose resource
+    // description runs over 500 characters.
+    for (const { path, description } of ENDPOINTS) {
+      expect(description.length, path).toBeGreaterThan(0);
+      expect(description.length, path).toBeLessThanOrEqual(500);
+    }
   });
 
   it("the_declaration_describes_the_get_call_even_for_a_head_request", () => {
