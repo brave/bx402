@@ -37,8 +37,8 @@ importers:
         specifier: ^4.13.7
         version: 4.13.8
       mppx:
-        specifier: 0.9.2
-        version: 0.9.2(@x402/core@2.25.0)(hono@4.13.8)(typescript@7.0.2)(viem@2.56.5(typescript@7.0.2)(zod@3.25.76))
+        specifier: 0.10.1
+        version: 0.10.1(@x402/core@2.25.0)(hono@4.13.8)(typescript@7.0.2)(viem@2.56.5(typescript@7.0.2)(zod@3.25.76))
       ox:
         specifier: 0.14.44
         version: 0.14.44(typescript@7.0.2)(zod@3.25.76)
@@ -1283,8 +1283,8 @@ packages:
     resolution: {integrity: sha512-ZDY+bPm5zTTF+YpCrAU9nK0UgICYPT0QtT1NZWFv4s++TNkcgVaT0g6+4R2uI4MjQjzysHB1zxuWL50hzaeXiw==}
     engines: {node: '>= 0.6'}
 
-  mppx@0.9.2:
-    resolution: {integrity: sha512-zKXIdKlFM6k9BS4Rt/f2CSKAbJr5a9DsITvSGtP9zDqjhdbCTzp377SuLNllaGX3yEGIh/vqD00hBacxZV0MEQ==}
+  mppx@0.10.1:
+    resolution: {integrity: sha512-MTpZqCMK7rQTz6uMONeigTesTb57b7dtdLhE1+cDfvc1rVPS4pCOvh7ocA1MF0692T0/GCVP10yafW5Ai8++Aw==}
     hasBin: true
     peerDependencies:
       '@modelcontextprotocol/sdk': '>=1.25.0'
@@ -2787,7 +2787,7 @@ snapshots:
     dependencies:
       mime-db: 1.52.0
 
-  mppx@0.9.2(@x402/core@2.25.0)(hono@4.13.8)(typescript@7.0.2)(viem@2.56.5(typescript@7.0.2)(zod@3.25.76)):
+  mppx@0.10.1(@x402/core@2.25.0)(hono@4.13.8)(typescript@7.0.2)(viem@2.56.5(typescript@7.0.2)(zod@3.25.76)):
     dependencies:
       '@stripe/stripe-js': 9.13.0
       eventsource-parser: 3.1.1
