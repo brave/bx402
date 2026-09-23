@@ -25,10 +25,10 @@ jobs:
 
     - name: Deploy to Production
       if: startsWith(github.ref, 'refs/tags/')
-      uses: brave-intl/general-docker-build-pipeline-action@561b579abfb43a2cd0343e68cec85336b90c95d4 # v1.0.40
+      uses: brave-intl/general-docker-build-pipeline-action@f6f89e09b9852b518ddcd9f4f65d13627a918713 # v1.0.41
       env:
         GITHUB_REF_OVERRIDE: refs/heads/production
 
     - name: Deploy Branch
       if: github.ref == 'refs/heads/master'
-      uses: brave-intl/general-docker-build-pipeline-action@561b579abfb43a2cd0343e68cec85336b90c95d4 # v1.0.40
+      uses: brave-intl/general-docker-build-pipeline-action@f6f89e09b9852b518ddcd9f4f65d13627a918713 # v1.0.41
