@@ -621,4 +621,33 @@ describe("x402", () => {
     expect(settled[0]).toContain(AUTHORIZATION.nonce);
     expect(settled[1]).toBe(settled[0]);
   });
+
+  it("a_settlement_still_pending_after_one_retry_is_not_retried_again", async () => {
+    // A third answer is ready, so a third request would be seen and would settle.
+    const { response, settled } = await payAgainst([
+      { statusCode: 500, data: PENDING },
+      { statusCode: 500, data: PENDING },
+      { statusCode: 200, data: SETTLED },
+    ]);
+
+    expect(response.status).toBe(502);
+    expect(settled).toHaveLength(2);
+  });
+
+  it("a_settlement_that_failed_outright_is_not_retried", async () => {
+    // A pending report with no transaction names nothing to check. A second answer
+    // is ready, so a retry would be seen and would settle.
+    for (const data of [
+      { ...PENDING, errorReason: "insufficient_funds", transaction: "" },
+      { ...PENDING, transaction: "" },
+    ]) {
+      const { response, settled } = await payAgainst([
+        { statusCode: 500, data },
+        { statusCode: 200, data: SETTLED },
+      ]);
+      expect(response.status, data.errorReason).toBe(502);
+      expect(settled, data.errorReason).toHaveLength(1);
+      restoreNetwork();
+    }
+  });
 });
