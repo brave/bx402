@@ -149,6 +149,21 @@ export function mockFacilitator(valid: boolean, settles: boolean): MockAgent {
 }
 
 /**
+ * Stand in for the facilitator's `GET /supported`, which the x402 rail loads once
+ * at startup, listing the exact scheme on every network the rail can offer. Call
+ * `restoreNetwork` afterwards.
+ */
+export function mockFacilitatorSupport(): void {
+  const networks = new Set([...accepts(true).values()].flat().map((offer) => offer.network));
+  mockNetwork()
+    .get(TEST_FACILITATOR)
+    .intercept({ method: "GET", path: "/supported" })
+    .reply(200, {
+      kinds: [...networks].map((network) => ({ x402Version: 2, scheme: "exact", network })),
+    });
+}
+
+/**
  * Stand in for `origin` on the shared mock network, for a test that stubs an
  * endpoint the fixed helpers below do not cover. Call `restoreNetwork` afterwards.
  */
@@ -191,20 +206,28 @@ export function restoreNetwork(): void {
 export const TEST_CHAIN_ID = 42431;
 
 /**
- * Build the app the way a test needs it: an enabled MPP rail asks its endpoint
- * which chain it serves before the app exists, so stand in for that endpoint
- * first. A test that disables the rail gets no stub, which is what proves a
- * disabled rail never queries a chain.
+ * Stand in for the one call each enabled rail makes at startup: x402 asks its
+ * facilitator what it supports, and MPP asks its endpoint which chain it serves,
+ * answered with `chain`. A disabled rail gets no stub, which is what proves a
+ * disabled rail makes no startup call.
  */
+export function stubStartup(config: Config, chain = TEST_CHAIN_ID): void {
+  if (config.x402 !== undefined) {
+    mockFacilitatorSupport();
+  }
+  if (config.mpp !== undefined) {
+    mockTempoRpc(chain);
+  }
+}
+
+/** Build the app the way a test needs it, its rails' startup calls answered. */
 export async function buildApp(
   config: Config,
   screener: RestrictedAddressScreener | undefined,
   metrics: Metrics,
   dispatcher?: Dispatcher,
 ): Promise<Hono> {
-  if (config.mpp !== undefined) {
-    mockTempoRpc(TEST_CHAIN_ID);
-  }
+  stubStartup(config);
   return dispatcher === undefined
     ? app(config, screener, metrics)
     : app(config, screener, metrics, dispatcher);
