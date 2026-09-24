@@ -1,5 +1,5 @@
 import { generateKeyPairSync } from "node:crypto";
-import type { HTTPFacilitatorClient } from "@x402/core/server";
+import type { FacilitatorClient } from "@x402/core/server";
 import type { PaymentPayload } from "@x402/core/types";
 import { extractDiscoveryInfo, validateDiscoveryExtension } from "@x402/extensions/bazaar";
 import { afterEach, describe, expect, it } from "vitest";
@@ -13,6 +13,7 @@ import {
   handle,
   offers,
   PAYMENT_REQUIRED_HEADER,
+  resourceServer,
 } from "../src/x402.js";
 import { decodeChallenge, mockOrigin, restoreNetwork, testClient } from "./support.js";
 
@@ -324,7 +325,7 @@ describe("x402", () => {
     const forwardedFor = async (query: string) => {
       const built = testClient();
       let forwarded: { resource?: { url?: string }; accepted?: unknown } | undefined;
-      built.facilitator = {
+      built.server = resourceServer({
         verify: async (payload: PaymentPayload) => {
           forwarded = payload as { resource?: { url?: string }; accepted?: unknown };
           return { isValid: true };
@@ -334,7 +335,7 @@ describe("x402", () => {
           transaction: "0xtxhash",
           network: "eip155:84532",
         }),
-      } as unknown as HTTPFacilitatorClient;
+      } as unknown as FacilitatorClient);
       const requested = `https://bx402.example.com/res/v1/web/search?q=${query}`;
       const response = await handle(
         built,
@@ -408,7 +409,7 @@ describe("x402", () => {
     if (offer === undefined) {
       throw new Error("the paid path offers nothing");
     }
-    const result = await built.facilitator.verify({} as PaymentPayload, offer);
+    const result = await built.server.verifyPayment({} as PaymentPayload, offer);
     expect(result.isValid).toBe(true);
     // The token itself is the CDP SDK's business; what is ours is that the
     // request went out bearing one.
