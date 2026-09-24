@@ -1,5 +1,5 @@
 import { generateKeyPairSync } from "node:crypto";
-import type { FacilitatorClient } from "@x402/core/server";
+import { type FacilitatorClient, HTTPFacilitatorClient } from "@x402/core/server";
 import type { PaymentPayload } from "@x402/core/types";
 import { extractDiscoveryInfo, validateDiscoveryExtension } from "@x402/extensions/bazaar";
 import { afterEach, describe, expect, it } from "vitest";
@@ -15,7 +15,13 @@ import {
   PAYMENT_REQUIRED_HEADER,
   resourceServer,
 } from "../src/x402.js";
-import { decodeChallenge, mockOrigin, restoreNetwork, testClient } from "./support.js";
+import {
+  decodeChallenge,
+  mockOrigin,
+  restoreNetwork,
+  TEST_FACILITATOR,
+  testClient,
+} from "./support.js";
 
 /** The offers advertised for one paid path. */
 function offersFor(allowTestnet: boolean, path: string) {
@@ -115,6 +121,55 @@ function declarationFor(requested: string): unknown {
  * header over 8 KB. The rest is left for the signature the client adds.
  */
 const CHALLENGE_HEADER_LIMIT = 6 * 1024;
+
+/** The body CDP sends with a settlement it sent to the chain but has not seen confirmed. */
+const PENDING = {
+  success: false,
+  errorReason: "settlement_pending",
+  transaction: "0xtxhash",
+  network: "eip155:84532",
+};
+
+const SETTLED = { success: true, transaction: "0xtxhash", network: "eip155:84532" };
+
+/**
+ * Pay for a search against a facilitator that answers each `/settle` with the next
+ * of `replies`, and return the response with the settle requests it received.
+ */
+async function payAgainst(replies: { statusCode: number; data: object }[]) {
+  const pool = mockOrigin(TEST_FACILITATOR);
+  pool.intercept({ method: "POST", path: "/verify" }).reply(200, { isValid: true });
+  for (const reply of replies) {
+    pool.intercept({ method: "POST", path: "/settle" }).reply(reply.statusCode, reply.data);
+  }
+  // The mock network hands the request body over as a stream, so each settle is
+  // recorded as the SDK asks for it, then sent over HTTP by the real client.
+  const http = new HTTPFacilitatorClient({ url: TEST_FACILITATOR });
+  const settled: string[] = [];
+  const built = testClient();
+  built.server = resourceServer({
+    verify: (payload, offer) => http.verify(payload, offer),
+    settle: (payload, offer) => {
+      settled.push(JSON.stringify([payload, offer]));
+      return http.settle(payload, offer);
+    },
+    getSupported: () => http.getSupported(),
+  });
+  const response = await handle(
+    built,
+    undefined,
+    new Metrics(),
+    "/res/v1/web/search",
+    REQUESTED,
+    paymentHeaders({
+      x402Version: 2,
+      accepted: offersFor(true, "/res/v1/web/search")[0],
+      payload: { authorization: AUTHORIZATION },
+    }),
+    async () => new Response(JSON.stringify({ web: {} }), { status: 200 }),
+  );
+  return { response, settled };
+}
 
 describe("x402", () => {
   afterEach(restoreNetwork);
@@ -550,5 +605,20 @@ describe("x402", () => {
       const entry = challenge(testClient(), `https://bx402.example.com${path}?q=${longest}`, "GET");
       expect(entry?.value.length, path).toBeLessThanOrEqual(CHALLENGE_HEADER_LIMIT);
     }
+  });
+
+  it("a_pending_settlement_is_asked_about_once_more", async () => {
+    // CDP answers a payment it sent but has not seen confirmed with a 500. The
+    // same request again makes it check that transaction rather than send another.
+    const { response, settled } = await payAgainst([
+      { statusCode: 500, data: PENDING },
+      { statusCode: 200, data: SETTLED },
+    ]);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.has("payment-response")).toBe(true);
+    expect(settled).toHaveLength(2);
+    expect(settled[0]).toContain(AUTHORIZATION.nonce);
+    expect(settled[1]).toBe(settled[0]);
   });
 });
