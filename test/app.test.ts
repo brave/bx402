@@ -14,12 +14,15 @@ import {
   decodeChallenge,
   hashCredentialHeader,
   mockFacilitator,
+  mockFacilitatorSupport,
+  mockOrigin,
   paymentSignature,
   restoreNetwork,
   restoreS3,
   screenerAnswering,
   screenerBlocking,
   signedTransactionCredentialHeader,
+  TEST_FACILITATOR,
   testConfig,
 } from "./support.js";
 
@@ -399,7 +402,30 @@ describe("app", () => {
     // Built through `app` rather than `buildApp`, so nothing stands in for the
     // endpoint. The rail asks it which chain it serves and gets no answer, which
     // aborts startup rather than serving a rail that cannot price anything.
+    mockFacilitatorSupport();
     await expect(app(testConfig(), undefined, new Metrics())).rejects.toThrow("MPP_RPC_URL");
+  });
+
+  it("app_rejects_a_facilitator_it_cannot_load_support_from", async () => {
+    // The rail routes payments by what the facilitator supports, so a
+    // facilitator that errors, supports nothing, or answers nothing (the mock
+    // network refuses the request) aborts startup.
+    const x402Only = testConfig({ mpp: undefined });
+    const replies: [string, { status: number; body: object } | undefined][] = [
+      ["an error", { status: 503, body: { error: "unavailable" } }],
+      ["nothing supported", { status: 200, body: { kinds: [] } }],
+      ["no answer", undefined],
+    ];
+    for (const [label, reply] of replies) {
+      const pool = mockOrigin(TEST_FACILITATOR);
+      if (reply !== undefined) {
+        pool.intercept({ method: "GET", path: "/supported" }).reply(reply.status, reply.body);
+      }
+      await expect(app(x402Only, undefined, new Metrics()), label).rejects.toThrow(
+        "X402_FACILITATOR_URL",
+      );
+      restoreNetwork();
+    }
   });
 
   it("each_endpoint_answers_a_cold_402_at_its_own_price", async () => {

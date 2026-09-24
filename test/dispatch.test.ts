@@ -9,13 +9,7 @@ import {
   type UriParts,
 } from "../src/dispatch.js";
 import { Metrics } from "../src/metrics.js";
-import {
-  decodeChallenge,
-  mockTempoRpc,
-  restoreNetwork,
-  TEST_CHAIN_ID,
-  testConfig,
-} from "./support.js";
+import { decodeChallenge, restoreNetwork, stubStartup, testConfig } from "./support.js";
 
 interface ClassifyCase {
   /** Label printed if the assertion fails. */
@@ -195,8 +189,9 @@ describe("dispatch", () => {
   });
 
   it("cold_402_advertises_both_rails", async () => {
-    mockTempoRpc(TEST_CHAIN_ID);
-    const ctx = await context(testConfig(), undefined, new Metrics());
+    const config = testConfig();
+    stubStartup(config);
+    const ctx = await context(config, undefined, new Metrics());
     const response = await cold402(
       ctx,
       "https://bx402.example.com/res/v1/web/search?q=rust",
@@ -221,14 +216,17 @@ describe("dispatch", () => {
   it("cold_402_advertises_only_the_enabled_rail", async () => {
     // x402 alone, with nothing standing in for a Tempo endpoint, which also
     // proves a disabled MPP rail never queries a chain.
-    const x402Only = await context(testConfig({ mpp: undefined }), undefined, new Metrics());
+    const x402Config = testConfig({ mpp: undefined });
+    stubStartup(x402Config);
+    const x402Only = await context(x402Config, undefined, new Metrics());
     const first = await cold402(x402Only, RESOURCE, "GET", WEB_SEARCH_PATH);
     expect(first.headers.get("payment-required")).not.toBeNull();
     expect(first.headers.get("www-authenticate")).toBeNull();
 
     // MPP alone: the inverse.
-    mockTempoRpc(TEST_CHAIN_ID);
-    const mppOnly = await context(testConfig({ x402: undefined }), undefined, new Metrics());
+    const mppConfig = testConfig({ x402: undefined });
+    stubStartup(mppConfig);
+    const mppOnly = await context(mppConfig, undefined, new Metrics());
     const second = await cold402(mppOnly, RESOURCE, "GET", WEB_SEARCH_PATH);
     expect(second.headers.get("payment-required")).toBeNull();
     expect(second.headers.get("www-authenticate")).not.toBeNull();

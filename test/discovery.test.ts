@@ -8,8 +8,8 @@ import { Metrics } from "../src/metrics.js";
 import { VERSION } from "../src/version.js";
 import { accepts } from "../src/x402.js";
 import {
-  mockTempoRpc,
   restoreNetwork,
+  stubStartup,
   TEST_CHAIN_ID,
   testConfig,
   WEB_SEARCH_PATH,
@@ -27,9 +27,7 @@ async function documentFor(
   chain = TEST_CHAIN_ID,
 ): Promise<DiscoveryDocument> {
   const config = testConfig(overrides);
-  if (config.mpp !== undefined) {
-    mockTempoRpc(chain);
-  }
+  stubStartup(config, chain);
   return document(await context(config, undefined, new Metrics()));
 }
 

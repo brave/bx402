@@ -1,5 +1,5 @@
 import { generateKeyPairSync } from "node:crypto";
-import type { HTTPFacilitatorClient } from "@x402/core/server";
+import { type FacilitatorClient, HTTPFacilitatorClient } from "@x402/core/server";
 import type { PaymentPayload } from "@x402/core/types";
 import { extractDiscoveryInfo, validateDiscoveryExtension } from "@x402/extensions/bazaar";
 import { afterEach, describe, expect, it } from "vitest";
@@ -13,8 +13,15 @@ import {
   handle,
   offers,
   PAYMENT_REQUIRED_HEADER,
+  resourceServer,
 } from "../src/x402.js";
-import { decodeChallenge, mockOrigin, restoreNetwork, testClient } from "./support.js";
+import {
+  decodeChallenge,
+  mockOrigin,
+  restoreNetwork,
+  TEST_FACILITATOR,
+  testClient,
+} from "./support.js";
 
 /** The offers advertised for one paid path. */
 function offersFor(allowTestnet: boolean, path: string) {
@@ -114,6 +121,55 @@ function declarationFor(requested: string): unknown {
  * header over 8 KB. The rest is left for the signature the client adds.
  */
 const CHALLENGE_HEADER_LIMIT = 6 * 1024;
+
+/** The body CDP sends with a settlement it sent to the chain but has not seen confirmed. */
+const PENDING = {
+  success: false,
+  errorReason: "settlement_pending",
+  transaction: "0xtxhash",
+  network: "eip155:84532",
+};
+
+const SETTLED = { success: true, transaction: "0xtxhash", network: "eip155:84532" };
+
+/**
+ * Pay for a search against a facilitator that answers each `/settle` with the next
+ * of `replies`, and return the response with the settle requests it received.
+ */
+async function payAgainst(replies: { statusCode: number; data: object }[]) {
+  const pool = mockOrigin(TEST_FACILITATOR);
+  pool.intercept({ method: "POST", path: "/verify" }).reply(200, { isValid: true });
+  for (const reply of replies) {
+    pool.intercept({ method: "POST", path: "/settle" }).reply(reply.statusCode, reply.data);
+  }
+  // The mock network hands the request body over as a stream, so each settle is
+  // recorded as the SDK asks for it, then sent over HTTP by the real client.
+  const http = new HTTPFacilitatorClient({ url: TEST_FACILITATOR });
+  const settled: string[] = [];
+  const built = testClient();
+  built.server = resourceServer({
+    verify: (payload, offer) => http.verify(payload, offer),
+    settle: (payload, offer) => {
+      settled.push(JSON.stringify([payload, offer]));
+      return http.settle(payload, offer);
+    },
+    getSupported: () => http.getSupported(),
+  });
+  const response = await handle(
+    built,
+    undefined,
+    new Metrics(),
+    "/res/v1/web/search",
+    REQUESTED,
+    paymentHeaders({
+      x402Version: 2,
+      accepted: offersFor(true, "/res/v1/web/search")[0],
+      payload: { authorization: AUTHORIZATION },
+    }),
+    async () => new Response(JSON.stringify({ web: {} }), { status: 200 }),
+  );
+  return { response, settled };
+}
 
 describe("x402", () => {
   afterEach(restoreNetwork);
@@ -324,7 +380,7 @@ describe("x402", () => {
     const forwardedFor = async (query: string) => {
       const built = testClient();
       let forwarded: { resource?: { url?: string }; accepted?: unknown } | undefined;
-      built.facilitator = {
+      built.server = resourceServer({
         verify: async (payload: PaymentPayload) => {
           forwarded = payload as { resource?: { url?: string }; accepted?: unknown };
           return { isValid: true };
@@ -334,7 +390,7 @@ describe("x402", () => {
           transaction: "0xtxhash",
           network: "eip155:84532",
         }),
-      } as unknown as HTTPFacilitatorClient;
+      } as unknown as FacilitatorClient);
       const requested = `https://bx402.example.com/res/v1/web/search?q=${query}`;
       const response = await handle(
         built,
@@ -408,7 +464,7 @@ describe("x402", () => {
     if (offer === undefined) {
       throw new Error("the paid path offers nothing");
     }
-    const result = await built.facilitator.verify({} as PaymentPayload, offer);
+    const result = await built.server.verifyPayment({} as PaymentPayload, offer);
     expect(result.isValid).toBe(true);
     // The token itself is the CDP SDK's business; what is ours is that the
     // request went out bearing one.
@@ -548,6 +604,50 @@ describe("x402", () => {
     for (const { path } of ENDPOINTS) {
       const entry = challenge(testClient(), `https://bx402.example.com${path}?q=${longest}`, "GET");
       expect(entry?.value.length, path).toBeLessThanOrEqual(CHALLENGE_HEADER_LIMIT);
+    }
+  });
+
+  it("a_pending_settlement_is_asked_about_once_more", async () => {
+    // CDP answers a payment it sent but has not seen confirmed with a 500. The
+    // same request again makes it check that transaction rather than send another.
+    const { response, settled } = await payAgainst([
+      { statusCode: 500, data: PENDING },
+      { statusCode: 200, data: SETTLED },
+    ]);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.has("payment-response")).toBe(true);
+    expect(settled).toHaveLength(2);
+    expect(settled[0]).toContain(AUTHORIZATION.nonce);
+    expect(settled[1]).toBe(settled[0]);
+  });
+
+  it("a_settlement_still_pending_after_one_retry_is_not_retried_again", async () => {
+    // A third answer is ready, so a third request would be seen and would settle.
+    const { response, settled } = await payAgainst([
+      { statusCode: 500, data: PENDING },
+      { statusCode: 500, data: PENDING },
+      { statusCode: 200, data: SETTLED },
+    ]);
+
+    expect(response.status).toBe(502);
+    expect(settled).toHaveLength(2);
+  });
+
+  it("a_settlement_that_failed_outright_is_not_retried", async () => {
+    // A pending report with no transaction names nothing to check. A second answer
+    // is ready, so a retry would be seen and would settle.
+    for (const data of [
+      { ...PENDING, errorReason: "insufficient_funds", transaction: "" },
+      { ...PENDING, transaction: "" },
+    ]) {
+      const { response, settled } = await payAgainst([
+        { statusCode: 500, data },
+        { statusCode: 200, data: SETTLED },
+      ]);
+      expect(response.status, data.errorReason).toBe(502);
+      expect(settled, data.errorReason).toHaveLength(1);
+      restoreNetwork();
     }
   });
 });

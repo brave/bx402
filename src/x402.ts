@@ -9,9 +9,14 @@ import { isDeepStrictEqual } from "node:util";
 import { createCdpAuthHeaders } from "@coinbase/x402";
 import type { FacilitatorConfig } from "@x402/core/http";
 import { encodePaymentRequiredHeader, encodePaymentResponseHeader } from "@x402/core/http";
-import { HTTPFacilitatorClient } from "@x402/core/server";
+import {
+  type FacilitatorClient,
+  HTTPFacilitatorClient,
+  x402ResourceServer,
+} from "@x402/core/server";
 import type { PaymentPayload, PaymentRequirements } from "@x402/core/types";
 import { findDefaultAsset, getDefaultAsset } from "@x402/evm";
+import { registerExactEvmScheme } from "@x402/evm/exact/server";
 import { base, baseSepolia } from "viem/chains";
 import type { Call } from "./calls.js";
 import { ClaimStore } from "./claims.js";
@@ -204,11 +209,12 @@ function routeExtensions(method: string, call: Call): Record<string, unknown> {
 }
 
 /**
- * The x402 facilitator client and the payment offers we accept, wrapped so the
- * rest of the service names this module's type rather than the SDK's.
+ * The x402 resource server and the payment offers we accept, wrapped so the rest
+ * of the service names this module's type rather than the SDK's.
  */
 export interface Client {
-  facilitator: HTTPFacilitatorClient;
+  /** Verifies and settles payments through the facilitator. */
+  server: x402ResourceServer;
   /**
    * Offers per paid path, built once at startup. The cold `402` for a path
    * advertises exactly that path's entries and a payment must accept one of
@@ -227,13 +233,13 @@ export interface Client {
 
 /**
  * The host CDP credentials sign for. The signed tokens name this host and the
- * CDP verify and settle paths, so they authenticate nowhere else.
+ * CDP verify, settle, and supported paths, so they authenticate nowhere else.
  */
 const CDP_FACILITATOR_HOST = "api.cdp.coinbase.com";
 
 /**
- * Build the x402 facilitator client from the rail's settings. A bad
- * `X402_FACILITATOR_URL` is a startup misconfiguration.
+ * Build the x402 client from the rail's settings. A bad `X402_FACILITATOR_URL`
+ * is a startup misconfiguration.
  */
 export function client(rail: X402Config, allowTestnet: boolean): Client {
   let url: URL;
@@ -261,10 +267,32 @@ export function client(rail: X402Config, allowTestnet: boolean): Client {
     }
   }
   return {
-    facilitator: new HTTPFacilitatorClient(config),
+    server: resourceServer(new HTTPFacilitatorClient(config)),
     accepts: accepts(allowTestnet),
     claims: new ClaimStore(),
   };
+}
+
+/** The SDK's resource server over `facilitator`, with the exact scheme on each of `NETWORKS`. */
+export function resourceServer(facilitator: FacilitatorClient): x402ResourceServer {
+  return registerExactEvmScheme(new x402ResourceServer(facilitator), {
+    networks: NETWORKS.map(({ caip2 }) => caip2),
+  });
+}
+
+/**
+ * Build the client and load what the facilitator supports, which the resource
+ * server routes payments by. A facilitator that cannot be reached, or supports
+ * nothing, stops startup.
+ */
+export async function start(rail: X402Config, allowTestnet: boolean): Promise<Client> {
+  const built = client(rail, allowTestnet);
+  try {
+    await built.server.initialize();
+  } catch (err) {
+    throw AppError.invalidConfig(`X402_FACILITATOR_URL: ${describe(err)}`);
+  }
+  return built;
 }
 
 /**
@@ -399,6 +427,8 @@ function describeOffer(entry: PaymentRequirements): string {
  * - facilitator unreachable on verify: `502`.
  * - search fails (4xx or 5xx): relayed as is, settlement skipped.
  * - settlement fails: `502`, the response body withheld.
+ * - settlement reported pending with a transaction: asked about once more, then
+ *   served or `502` by that answer.
  *
  * `requested` is the absolute URL being paid for, which the payment is relayed as
  * having bought.
@@ -462,7 +492,7 @@ export async function handle(
     const verifyStarted = performance.now();
     let verified: { isValid: boolean };
     try {
-      verified = await client.facilitator.verify(payload, offer);
+      verified = await client.server.verifyPayment(payload, offer);
     } catch (err) {
       metrics.recordPaymentStep(RAIL, step.VERIFY, seconds(verifyStarted));
       log.error(`x402 facilitator verify failed: ${describe(err)}`);
@@ -483,7 +513,7 @@ export async function handle(
     const settleStarted = performance.now();
     let receipt: { success: boolean };
     try {
-      receipt = await client.facilitator.settle(payload, offer);
+      receipt = await client.server.settlePayment(payload, offer);
     } catch (err) {
       metrics.recordPaymentStep(RAIL, step.SETTLE, seconds(settleStarted));
       log.error(`x402 facilitator settle failed: ${describe(err)}`);
