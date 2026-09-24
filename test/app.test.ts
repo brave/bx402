@@ -14,6 +14,7 @@ import {
   decodeChallenge,
   hashCredentialHeader,
   mockFacilitator,
+  mockFacilitatorSupport,
   paymentSignature,
   restoreNetwork,
   restoreS3,
@@ -399,6 +400,7 @@ describe("app", () => {
     // Built through `app` rather than `buildApp`, so nothing stands in for the
     // endpoint. The rail asks it which chain it serves and gets no answer, which
     // aborts startup rather than serving a rail that cannot price anything.
+    mockFacilitatorSupport();
     await expect(app(testConfig(), undefined, new Metrics())).rejects.toThrow("MPP_RPC_URL");
   });
 

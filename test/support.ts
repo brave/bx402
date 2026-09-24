@@ -1,4 +1,6 @@
 import { HeadObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import type { FacilitatorClient } from "@x402/core/server";
+import type { SettleResponse, SupportedResponse } from "@x402/core/types";
 import { type AwsStub, mockClient } from "aws-sdk-client-mock";
 import type { Hono } from "hono";
 import { Challenge, Credential } from "mppx";
@@ -15,10 +17,16 @@ import { privateKeyToAccount } from "viem/accounts";
 import { expect } from "vitest";
 import { app } from "../src/app.js";
 import type { Config } from "../src/config.js";
+import { type Context, context } from "../src/dispatch.js";
 import { Metrics } from "../src/metrics.js";
 import { challenge as mppChallenge, client as mppClient } from "../src/mpp.js";
 import { RestrictedAddressScreener } from "../src/screener.js";
-import { accepts, type Client as X402Client, client as x402Client } from "../src/x402.js";
+import {
+  accepts,
+  resourceServer,
+  type Client as X402Client,
+  client as x402Client,
+} from "../src/x402.js";
 
 /**
  * A config whose every endpoint is parseable but unreachable, shared by the test
@@ -48,6 +56,17 @@ export function testClient(): X402Client {
     throw new Error("the test config enables the x402 rail");
   }
   return x402Client(config.x402, config.allowTestnet);
+}
+
+/**
+ * A test client whose payments go through `facilitator`, loaded the way startup
+ * loads it, so a recording stand-in sees exactly what the rail sends.
+ */
+export async function testClientOver(facilitator: FacilitatorClient): Promise<X402Client> {
+  const built = testClient();
+  built.server = resourceServer(facilitator);
+  await built.server.initialize();
+  return built;
 }
 
 /**
@@ -136,7 +155,7 @@ export function mockFacilitator(valid: boolean, settles: boolean): MockAgent {
     .reply(
       200,
       settles
-        ? { success: true, transaction: "0xtxhash", network: "eip155:84532" }
+        ? SETTLED
         : {
             success: false,
             errorReason: "settlement_failed",
@@ -146,6 +165,32 @@ export function mockFacilitator(valid: boolean, settles: boolean): MockAgent {
     )
     .persist();
   return agent;
+}
+
+/** The body the facilitator sends with a successful settlement. */
+export const SETTLED: SettleResponse = {
+  success: true,
+  transaction: "0xtxhash",
+  network: "eip155:84532",
+};
+
+/** What the facilitator supports: the exact scheme on every network the rail can offer. */
+export const TEST_SUPPORT: SupportedResponse = {
+  kinds: [...new Set([...accepts(true).values()].flat().map((offer) => offer.network))].map(
+    (network) => ({ x402Version: 2, scheme: "exact", network }),
+  ),
+  extensions: [],
+  signers: {},
+};
+
+/**
+ * Stand in for the facilitator's `GET /supported`, which the x402 rail loads once
+ * at startup, answered with `TEST_SUPPORT`. Call `restoreNetwork` afterwards.
+ */
+export function mockFacilitatorSupport(): void {
+  mockOrigin(TEST_FACILITATOR)
+    .intercept({ method: "GET", path: "/supported" })
+    .reply(200, TEST_SUPPORT);
 }
 
 /**
@@ -191,20 +236,34 @@ export function restoreNetwork(): void {
 export const TEST_CHAIN_ID = 42431;
 
 /**
- * Build the app the way a test needs it: an enabled MPP rail asks its endpoint
- * which chain it serves before the app exists, so stand in for that endpoint
- * first. A test that disables the rail gets no stub, which is what proves a
- * disabled rail never queries a chain.
+ * Stand in for the one call each enabled rail makes at startup: x402 asks its
+ * facilitator what it supports, and MPP asks its endpoint which chain it serves,
+ * answered with `chain`. A disabled rail gets no stub, which is what proves a
+ * disabled rail makes no startup call.
  */
+function stubStartup(config: Config, chain = TEST_CHAIN_ID): void {
+  if (config.x402 !== undefined) {
+    mockFacilitatorSupport();
+  }
+  if (config.mpp !== undefined) {
+    mockTempoRpc(chain);
+  }
+}
+
+/** Build the dispatch context the way a test needs it, its rails' startup calls answered. */
+export async function buildContext(config: Config, chain = TEST_CHAIN_ID): Promise<Context> {
+  stubStartup(config, chain);
+  return context(config, undefined, new Metrics());
+}
+
+/** Build the app the way a test needs it, its rails' startup calls answered. */
 export async function buildApp(
   config: Config,
   screener: RestrictedAddressScreener | undefined,
   metrics: Metrics,
   dispatcher?: Dispatcher,
 ): Promise<Hono> {
-  if (config.mpp !== undefined) {
-    mockTempoRpc(TEST_CHAIN_ID);
-  }
+  stubStartup(config);
   return dispatcher === undefined
     ? app(config, screener, metrics)
     : app(config, screener, metrics, dispatcher);

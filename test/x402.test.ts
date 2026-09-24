@@ -1,5 +1,4 @@
 import { generateKeyPairSync } from "node:crypto";
-import type { FacilitatorClient } from "@x402/core/server";
 import type { PaymentPayload } from "@x402/core/types";
 import { extractDiscoveryInfo, validateDiscoveryExtension } from "@x402/extensions/bazaar";
 import { afterEach, describe, expect, it } from "vitest";
@@ -13,9 +12,16 @@ import {
   handle,
   offers,
   PAYMENT_REQUIRED_HEADER,
-  resourceServer,
 } from "../src/x402.js";
-import { decodeChallenge, mockOrigin, restoreNetwork, testClient } from "./support.js";
+import {
+  decodeChallenge,
+  mockOrigin,
+  restoreNetwork,
+  SETTLED,
+  TEST_SUPPORT,
+  testClient,
+  testClientOver,
+} from "./support.js";
 
 /** The offers advertised for one paid path. */
 function offersFor(allowTestnet: boolean, path: string) {
@@ -323,19 +329,15 @@ describe("x402", () => {
     // recording stand-in reads exactly what the SDK would serialize.
     const entries = offersFor(true, "/res/v1/web/search");
     const forwardedFor = async (query: string) => {
-      const built = testClient();
       let forwarded: { resource?: { url?: string }; accepted?: unknown } | undefined;
-      built.server = resourceServer({
+      const built = await testClientOver({
         verify: async (payload: PaymentPayload) => {
           forwarded = payload as { resource?: { url?: string }; accepted?: unknown };
           return { isValid: true };
         },
-        settle: async () => ({
-          success: true,
-          transaction: "0xtxhash",
-          network: "eip155:84532",
-        }),
-      } as unknown as FacilitatorClient);
+        settle: async () => SETTLED,
+        getSupported: async () => TEST_SUPPORT,
+      });
       const requested = `https://bx402.example.com/res/v1/web/search?q=${query}`;
       const response = await handle(
         built,

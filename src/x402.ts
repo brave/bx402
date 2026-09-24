@@ -233,7 +233,7 @@ export interface Client {
 
 /**
  * The host CDP credentials sign for. The signed tokens name this host and the
- * CDP verify and settle paths, so they authenticate nowhere else.
+ * CDP verify, settle, and supported paths, so they authenticate nowhere else.
  */
 const CDP_FACILITATOR_HOST = "api.cdp.coinbase.com";
 
@@ -278,6 +278,21 @@ export function resourceServer(facilitator: FacilitatorClient): x402ResourceServ
   return registerExactEvmScheme(new x402ResourceServer(facilitator), {
     networks: NETWORKS.map(({ caip2 }) => caip2),
   });
+}
+
+/**
+ * Build the client and load what the facilitator supports, which the resource
+ * server routes payments by. A facilitator that cannot be reached, or supports
+ * nothing, stops startup.
+ */
+export async function start(rail: X402Config, allowTestnet: boolean): Promise<Client> {
+  const built = client(rail, allowTestnet);
+  try {
+    await built.server.initialize();
+  } catch (err) {
+    throw AppError.invalidConfig(`X402_FACILITATOR_URL: ${describe(err)}`);
+  }
+  return built;
 }
 
 /**

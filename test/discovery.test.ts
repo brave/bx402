@@ -2,13 +2,11 @@ import { validate } from "mppx/discovery";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Config } from "../src/config.js";
 import { type DiscoveryDocument, document, GUIDE_PATH } from "../src/discovery.js";
-import { context } from "../src/dispatch.js";
 import { ENDPOINTS } from "../src/endpoints.js";
-import { Metrics } from "../src/metrics.js";
 import { VERSION } from "../src/version.js";
 import { accepts } from "../src/x402.js";
 import {
-  mockTempoRpc,
+  buildContext,
   restoreNetwork,
   TEST_CHAIN_ID,
   testConfig,
@@ -26,11 +24,7 @@ async function documentFor(
   overrides: Partial<Config> = {},
   chain = TEST_CHAIN_ID,
 ): Promise<DiscoveryDocument> {
-  const config = testConfig(overrides);
-  if (config.mpp !== undefined) {
-    mockTempoRpc(chain);
-  }
-  return document(await context(config, undefined, new Metrics()));
+  return document(await buildContext(testConfig(overrides), chain));
 }
 
 /** The offers stated for one path. */
