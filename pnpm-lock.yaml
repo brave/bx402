@@ -17,7 +17,7 @@ importers:
         version: 3.1127.0
       '@coinbase/x402':
         specifier: 2.1.0
-        version: 2.1.0(@x402/evm@2.25.0(typescript@7.0.2))(@x402/extensions@2.25.0(typescript@7.0.2))(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)(typescript@7.0.2)
+        version: 2.1.0(@x402/evm@2.26.0(typescript@7.0.2))(@x402/extensions@2.25.0(typescript@7.0.2))(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)(typescript@7.0.2)
       '@hono/node-server':
         specifier: ^2.1.1
         version: 2.1.1(hono@4.13.8)
@@ -32,7 +32,7 @@ importers:
         version: 2.25.0
       '@x402/evm':
         specifier: ^2.25.0
-        version: 2.25.0(typescript@7.0.2)
+        version: 2.26.0(typescript@7.0.2)
       hono:
         specifier: ^4.13.7
         version: 4.13.8
@@ -943,8 +943,11 @@ packages:
   '@x402/core@2.25.0':
     resolution: {integrity: sha512-5Ys0XYz3FKutxVKoXC46R/XPT/oaAbuj7ahzrlVHwQxZJPH9u6u91IOh0ztz+7G/zYGsaXR8l3ety205QtEnUw==}
 
-  '@x402/evm@2.25.0':
-    resolution: {integrity: sha512-EmnL4MyGW8weEUlq0qC1uJUeoBmtp9GWGwyPl+qkC0CYItRHn748puhYAxK8GsrofscQrt63HsFCB0Gp3iEROA==}
+  '@x402/core@2.26.0':
+    resolution: {integrity: sha512-8dlXip9u0JjyELzzFz48vntuMajvUjA8IYpitfaW423m53bR49amZDIn3n4gXRYoNEKzGB9Rtn8at35WHz61cA==}
+
+  '@x402/evm@2.26.0':
+    resolution: {integrity: sha512-dcDxdWsEqyqmr0BsTXbvDNbL2KCjSvqcQV6VtSu7eTeDmi6RfI/T4IPSst5iI8M2Ys34Wc48AikJepuE7Bojgw==}
 
   '@x402/extensions@2.25.0':
     resolution: {integrity: sha512-7gXpYoHX8CkQ4bwUfzx0GS6VQlx810+GiGOAYhwsbTtIZFt/ahz/5CjCs7qfoKYcgAWcVyvBCl9U3FYYBX01nA==}
@@ -1449,6 +1452,14 @@ packages:
       typescript:
         optional: true
 
+  viem@2.56.9:
+    resolution: {integrity: sha512-UC1G0Qz+RbPKqwl6yRrp3dH6ltrOmUcFJMTcOyE1Mg0nO5lxrEBTONh/8OFWPnALGuN/O7LkNcz/IsSj83Svqw==}
+    peerDependencies:
+      typescript: '>=5.0.4'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
   vite@8.2.2:
     resolution: {integrity: sha512-cFKLV/PRgAUlIRm5WjMjJ86jrftzpqcgH+Us+DS8mI3CDNiH30Whrz8uHL3+MOLPAgqbMBAqWdAHAphOAM+z/Q==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -1760,7 +1771,7 @@ snapshots:
   '@biomejs/cli-win32-x64@2.5.12':
     optional: true
 
-  '@coinbase/cdp-sdk@1.55.0(@x402/core@2.25.0)(@x402/evm@2.25.0(typescript@7.0.2))(@x402/extensions@2.25.0(typescript@7.0.2))(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)(typescript@7.0.2)':
+  '@coinbase/cdp-sdk@1.55.0(@x402/core@2.25.0)(@x402/evm@2.26.0(typescript@7.0.2))(@x402/extensions@2.25.0(typescript@7.0.2))(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)(typescript@7.0.2)':
     dependencies:
       '@solana-program/system': 0.10.0(@solana/kit@5.5.1(typescript@7.0.2))
       '@solana-program/token': 0.9.0(@solana/kit@5.5.1(typescript@7.0.2))
@@ -1776,7 +1787,7 @@ snapshots:
       zod: 3.25.76
     optionalDependencies:
       '@x402/core': 2.25.0
-      '@x402/evm': 2.25.0(typescript@7.0.2)
+      '@x402/evm': 2.26.0(typescript@7.0.2)
       '@x402/extensions': 2.25.0(typescript@7.0.2)
     transitivePeerDependencies:
       - bufferutil
@@ -1786,9 +1797,9 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@coinbase/x402@2.1.0(@x402/evm@2.25.0(typescript@7.0.2))(@x402/extensions@2.25.0(typescript@7.0.2))(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)(typescript@7.0.2)':
+  '@coinbase/x402@2.1.0(@x402/evm@2.26.0(typescript@7.0.2))(@x402/extensions@2.25.0(typescript@7.0.2))(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)(typescript@7.0.2)':
     dependencies:
-      '@coinbase/cdp-sdk': 1.55.0(@x402/core@2.25.0)(@x402/evm@2.25.0(typescript@7.0.2))(@x402/extensions@2.25.0(typescript@7.0.2))(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)(typescript@7.0.2)
+      '@coinbase/cdp-sdk': 1.55.0(@x402/core@2.25.0)(@x402/evm@2.26.0(typescript@7.0.2))(@x402/extensions@2.25.0(typescript@7.0.2))(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)(typescript@7.0.2)
       '@x402/core': 2.25.0
       viem: 2.56.5(typescript@7.0.2)(zod@3.25.76)
       zod: 3.25.76
@@ -2482,10 +2493,14 @@ snapshots:
     dependencies:
       zod: 3.25.76
 
-  '@x402/evm@2.25.0(typescript@7.0.2)':
+  '@x402/core@2.26.0':
     dependencies:
-      '@x402/core': 2.25.0
-      viem: 2.56.5(typescript@7.0.2)(zod@3.25.76)
+      zod: 3.25.76
+
+  '@x402/evm@2.26.0(typescript@7.0.2)':
+    dependencies:
+      '@x402/core': 2.26.0
+      viem: 2.56.9(typescript@7.0.2)(zod@3.25.76)
       zod: 3.25.76
     transitivePeerDependencies:
       - bufferutil
@@ -2957,6 +2972,23 @@ snapshots:
   undici@8.10.2: {}
 
   viem@2.56.5(typescript@7.0.2)(zod@3.25.76):
+    dependencies:
+      '@noble/curves': 1.9.1
+      '@noble/hashes': 1.8.0
+      '@scure/bip32': 1.7.0
+      '@scure/bip39': 1.6.0
+      abitype: 1.2.3(typescript@7.0.2)(zod@3.25.76)
+      isows: 1.0.7(ws@8.21.0)
+      ox: 0.14.44(typescript@7.0.2)(zod@3.25.76)
+      ws: 8.21.0
+    optionalDependencies:
+      typescript: 7.0.2
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+      - zod
+
+  viem@2.56.9(typescript@7.0.2)(zod@3.25.76):
     dependencies:
       '@noble/curves': 1.9.1
       '@noble/hashes': 1.8.0
