@@ -392,7 +392,9 @@ describe("app", () => {
     );
   });
   it("app_rejects_an_unparseable_facilitator_url", async () => {
-    const config = testConfig({ x402: { facilitatorUrl: "not a url", cdp: undefined } });
+    const config = testConfig({
+      x402: { facilitatorUrl: "not a url", cdp: undefined, enableBazaar: true },
+    });
     await expect(buildApp(config, undefined, new Metrics())).rejects.toThrow(
       "invalid configuration",
     );

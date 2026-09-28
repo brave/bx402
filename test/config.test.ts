@@ -81,4 +81,25 @@ describe("config", () => {
       configFromEnv({ ...base, ENABLED_RAILS: "none", CDP_API_KEY_ID: "key-id" }).x402,
     ).toBeUndefined();
   });
+
+  it("bazaar_is_off_unless_enabled_exactly", () => {
+    const base = {
+      BRAVE_SEARCH_API_KEY: "secret-key",
+      X402_FACILITATOR_URL: "https://x402.org/facilitator",
+      ENABLED_RAILS: "x402",
+    };
+    const enabled = (value?: string) =>
+      configFromEnv(value === undefined ? base : { ...base, X402_ENABLE_BAZAAR: value }).x402
+        ?.enableBazaar;
+
+    expect(enabled()).toBe(false);
+    expect(enabled("")).toBe(false);
+    expect(enabled("false")).toBe(false);
+    expect(enabled("true")).toBe(true);
+
+    // Production has to turn it on, so a mistyped value must not quietly decide.
+    for (const value of ["True", "yes", "1", "on"]) {
+      expect(() => enabled(value), value).toThrow(/X402_ENABLE_BAZAAR/);
+    }
+  });
 });

@@ -176,7 +176,10 @@ describe("x402", () => {
   });
 
   it("discovery_offers_restate_the_accepts_table", () => {
-    const built = client({ facilitatorUrl: "https://x402.org/facilitator", cdp: undefined }, true);
+    const built = client(
+      { facilitatorUrl: "https://x402.org/facilitator", cdp: undefined, enableBazaar: true },
+      true,
+    );
     const entries = offersFor(true, "/res/v1/web/search");
 
     const stated = offers(built, "/res/v1/web/search");
@@ -197,7 +200,10 @@ describe("x402", () => {
   });
 
   it("discovery_offers_are_empty_for_a_path_that_is_not_sold", () => {
-    const built = client({ facilitatorUrl: "https://x402.org/facilitator", cdp: undefined }, true);
+    const built = client(
+      { facilitatorUrl: "https://x402.org/facilitator", cdp: undefined, enableBazaar: true },
+      true,
+    );
     expect(offers(built, "/res/v1/answers/search")).toEqual([]);
   });
 
@@ -428,16 +434,19 @@ describe("x402", () => {
     // A signed CDP token sent to any other host could be replayed against CDP
     // while it lives, so that combination must never build.
     const cdp = { apiKeyId: "key-id", apiKeySecret: "key-secret" };
-    expect(() => client({ facilitatorUrl: "https://x402.org/facilitator", cdp }, true)).toThrow(
-      /api\.cdp\.coinbase\.com/,
-    );
-    expect(client({ facilitatorUrl: CDP_FACILITATOR_URL, cdp }, true)).toBeDefined();
+    expect(() =>
+      client({ facilitatorUrl: "https://x402.org/facilitator", cdp, enableBazaar: true }, true),
+    ).toThrow(/api\.cdp\.coinbase\.com/);
+    expect(
+      client({ facilitatorUrl: CDP_FACILITATOR_URL, cdp, enableBazaar: true }, true),
+    ).toBeDefined();
   });
 
   it("cdp_credentials_sign_the_verify_call", async () => {
     const built = client(
       {
         facilitatorUrl: CDP_FACILITATOR_URL,
+        enableBazaar: true,
         cdp: { apiKeyId: "key-id", apiKeySecret: testCdpSecret() },
       },
       true,

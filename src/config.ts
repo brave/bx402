@@ -57,6 +57,11 @@ export interface X402Config {
    * take no credentials. Requests carry a signed token only when this is set.
    */
   cdp: CdpCredentials | undefined;
+  /**
+   * Whether payments carry what a facilitator's catalog needs to list the paid
+   * paths. On only for a deployment that should be listed, such as production.
+   */
+  enableBazaar: boolean;
 }
 
 /**
@@ -122,6 +127,9 @@ export interface Config {
  * - `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET` (optional, read only when the x402
  *   rail is enabled): API key for the Coinbase-hosted facilitator, set together
  *   or not at all. Unset or empty leaves facilitator requests uncredentialed.
+ * - `X402_ENABLE_BAZAAR` (optional, read only when the x402 rail is enabled):
+ *   `true` lets facilitator catalogs such as the Bazaar list the paid paths.
+ *   Unset or `false` keeps them out.
  * - `MPP_RPC_URL` (required when the MPP rail is enabled): Tempo RPC endpoint.
  * - `MPP_SECRET_KEY` (required when the MPP rail is enabled): HMAC secret binding
  *   MPP challenges to this service.
@@ -158,7 +166,28 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): Config {
 /** Read the x402 rail's settings. */
 function x402FromEnv(env: NodeJS.ProcessEnv): X402Config {
   const cdp = cdpFromEnv(env);
-  return { facilitatorUrl: requireVar(env, "X402_FACILITATOR_URL"), cdp };
+  return {
+    facilitatorUrl: requireVar(env, "X402_FACILITATOR_URL"),
+    cdp,
+    enableBazaar: enableBazaarFromEnv(env),
+  };
+}
+
+/**
+ * Read whether the paid paths may be listed. Anything but `true` or `false` is a
+ * misconfiguration, so a mistyped value cannot quietly decide either way.
+ */
+function enableBazaarFromEnv(env: NodeJS.ProcessEnv): boolean {
+  const value = optionalVar(env, "X402_ENABLE_BAZAAR");
+  if (value === undefined || value === "false") {
+    return false;
+  }
+  if (value === "true") {
+    return true;
+  }
+  throw AppError.invalidConfig(
+    `X402_ENABLE_BAZAAR: expected true or false, got ${JSON.stringify(value)}`,
+  );
 }
 
 /**

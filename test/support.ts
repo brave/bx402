@@ -36,7 +36,7 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
   return {
     braveSearchApiKey: "secret-key",
     braveSearchApiBaseUrl: "http://upstream.invalid",
-    x402: { facilitatorUrl: "http://facilitator.invalid", cdp: undefined },
+    x402: { facilitatorUrl: "http://facilitator.invalid", cdp: undefined, enableBazaar: true },
     // The SDK refuses a secret key under 32 bytes, so this one is long enough to
     // build a handler with.
     mpp: { rpcUrl: "http://tempo.invalid", secretKey: "test-secret-of-at-least-32-bytes" },
