@@ -225,6 +225,19 @@ describe("app", () => {
     );
   });
 
+  it("the_guide_names_the_origin_it_was_fetched_from", async () => {
+    // Behind the load balancer the service sees plain HTTP, and the public origin
+    // comes from `Host` and `X-Forwarded-Proto`, as it does for a `402`.
+    const hono = await buildApp(testConfig(), undefined, new Metrics());
+    const response = await hono.request("http://10.0.0.1:8080/llms.txt", {
+      headers: { host: "search.agent.s.brave.app", "x-forwarded-proto": "https" },
+    });
+    const text = await response.text();
+
+    expect(text).toContain("'https://search.agent.s.brave.app/res/v1/web/search?q=rust'");
+    expect(text).not.toContain("{origin}");
+  });
+
   it("guide_head_carries_the_headers_without_a_body", async () => {
     const response = await (await buildApp(testConfig(), undefined, new Metrics())).request(
       "/llms.txt",
