@@ -14,7 +14,7 @@ import {
   HTTPFacilitatorClient,
   x402ResourceServer,
 } from "@x402/core/server";
-import type { PaymentPayload, PaymentRequirements } from "@x402/core/types";
+import { type PaymentPayload, type PaymentRequirements, VerifyError } from "@x402/core/types";
 import { findDefaultAsset, getDefaultAsset } from "@x402/evm";
 import { registerExactEvmScheme } from "@x402/evm/exact/server";
 import { base, baseSepolia } from "viem/chains";
@@ -488,13 +488,17 @@ export async function handle(
     }
 
     // Verify before doing any work. A facilitator we cannot reach is our
-    // failure, not the client's, so it is a 502 rather than a 402.
+    // failure, not the client's, so it is a 502 rather than a 402. A facilitator
+    // that refuses the payment with an error status still refused it.
     const verifyStarted = performance.now();
     let verified: { isValid: boolean };
     try {
       verified = await client.server.verifyPayment(payload, offer);
     } catch (err) {
       metrics.recordPaymentStep(RAIL, step.VERIFY, seconds(verifyStarted));
+      if (err instanceof VerifyError) {
+        return ended(outcome.REFUSED, paymentRejected(GENERIC_REJECTION));
+      }
       log.error(`x402 facilitator verify failed: ${describe(err)}`);
       return ended(outcome.NETWORK_UNAVAILABLE, gatewayError("payment facilitator unavailable"));
     }
