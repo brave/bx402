@@ -12,15 +12,14 @@ the authoritative statement of what that exact request costs.
 ## Buy one search
 
 Both commands pay the testnet offer of a deployment that allows testnets.
-Replace the origin with the one you fetched this file from.
 
 x402 rail, USDC on Base Sepolia, with purl (https://github.com/stripe/purl):
 
-    purl --max-amount 10000 'https://bx402.example/res/v1/web/search?q=rust'
+    purl --max-amount 10000 '{origin}/res/v1/web/search?q=rust'
 
 MPP rail, pathUSD on Tempo Moderato, with mppx (https://www.npmjs.com/package/mppx):
 
-    npx mppx --network testnet -i 'https://bx402.example/res/v1/web/search?q=rust'
+    npx mppx --network testnet -i '{origin}/res/v1/web/search?q=rust'
 
 On mainnet, drop `--network testnet` and fund the payer with real USDC on Base
 or pathUSD on Tempo.

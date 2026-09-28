@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Dispatcher } from "undici";
 import type { Config } from "./config.js";
 import { CACHE_CONTROL, DISCOVERY_PATH, document, GUIDE_PATH, guide } from "./discovery.js";
-import { context, dispatch } from "./dispatch.js";
+import { absoluteUri, context, dispatch } from "./dispatch.js";
 import { ENDPOINTS } from "./endpoints.js";
 import { AppError, emptyBody } from "./error.js";
 import { endpointLabel, type Metrics, measure, seconds } from "./metrics.js";
@@ -53,17 +53,19 @@ export async function app(
   // The discovery document and the buyer's guide are served free, since they
   // are how a client learns what is for sale before paying. Registered
   // outside the endpoint loop, so dispatch never runs for them and neither
-  // path can turn payable. Both bodies are built and encoded once: nothing in
-  // either varies per request, and the rails the document reads are fixed at
-  // startup. The responses are built by hand rather than through `c.json()`,
+  // path can turn payable. The document is built once, since the rails it reads
+  // are fixed at startup. The guide fills in its origin the same way a `402`
+  // names it. The responses are built by hand rather than through `c.json()`,
   // which would append a charset to the content type.
+  const discoveryBody = Buffer.from(JSON.stringify(document(ctx)));
+  const guideFor = guide();
   const served = [
+    { path: DISCOVERY_PATH, type: "application/json", body: () => discoveryBody },
     {
-      path: DISCOVERY_PATH,
-      type: "application/json",
-      body: Buffer.from(JSON.stringify(document(ctx))),
+      path: GUIDE_PATH,
+      type: "text/plain; charset=utf-8",
+      body: (request: Request) => guideFor(new URL(absoluteUri(request)).origin),
     },
-    { path: GUIDE_PATH, type: "text/plain; charset=utf-8", body: Buffer.from(guide()) },
   ];
   for (const { path, type, body } of served) {
     hono.on(
@@ -71,7 +73,7 @@ export async function app(
       path,
       (c) =>
         // A HEAD carries the headers of the GET and none of the body.
-        new Response(c.req.method === "HEAD" ? null : body, {
+        new Response(c.req.method === "HEAD" ? null : body(c.req.raw), {
           headers: { "content-type": type, "cache-control": CACHE_CONTROL },
         }),
     );

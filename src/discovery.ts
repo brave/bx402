@@ -87,8 +87,8 @@ export interface DiscoveryDocument {
  * advisory all the same: the runtime `402` challenge is authoritative, which
  * is why every operation declares that response.
  *
- * There is no `servers` block. The service never learns its public origin,
- * so paths stay relative to wherever the document was fetched from.
+ * There is no `servers` block. No origin is configured, and a JSON reader can
+ * resolve paths against wherever it fetched the document from.
  */
 export function document(ctx: Context): DiscoveryDocument {
   const paths = Object.fromEntries(
@@ -102,8 +102,8 @@ export function document(ctx: Context): DiscoveryDocument {
     "x-service-info": {
       categories: ["search"],
       // The guide link is relative for the same reason there is no `servers`
-      // block: a reader that fetched the document has the origin to resolve
-      // it against, and the service itself does not.
+      // block. A reader that fetched the document has the origin to resolve it
+      // against.
       docs: { homepage: HOMEPAGE, apiReference: `${HOMEPAGE}#endpoints`, llms: GUIDE_PATH },
     },
     paths,
@@ -142,11 +142,16 @@ function operation(ctx: Context, endpoint: Endpoint): Operation {
  * Called when the routes are built, never at module load. A missing or
  * unreadable file refuses startup: serving a 404 instead would mean a healthy
  * looking deployment whose document advertises a guide it does not have.
+ *
+ * The file's example commands name `{origin}`, which the returned function
+ * fills with the origin the guide was fetched from, so they work as pasted.
  */
-export function guide(): string {
+export function guide(): (origin: string) => string {
+  let template: string;
   try {
-    return readFileSync(new URL("../llms.txt", import.meta.url), "utf8");
+    template = readFileSync(new URL("../llms.txt", import.meta.url), "utf8");
   } catch (err) {
     throw AppError.invalidConfig(`the buyer's guide llms.txt cannot be read: ${describe(err)}`);
   }
+  return (origin) => template.replaceAll("{origin}", origin);
 }
