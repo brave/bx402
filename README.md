@@ -141,9 +141,11 @@ offers each enabled rail advertises, following MPP's payment discovery draft.
 `docs.llms`. Both are free and cached for five minutes; discovery is advisory, and the
 `402` challenge stays authoritative.
 
-The x402 challenge also declares how to call each paid path under `extensions.bazaar`, so
-a facilitator that keeps a catalog can list the endpoint once a payment for it settles.
-Facilitators that keep no catalog ignore the declaration.
+With `X402_ENABLE_BAZAAR=true`, the x402 challenge also declares how to call each paid path
+under `extensions.bazaar`, so a facilitator that keeps a catalog can list the endpoint once a
+payment for it settles. Facilitators that keep no catalog ignore the declaration. Unset or
+`false` leaves it out, so only a deployment meant to be listed, such as production, ever is.
+Any other value stops startup.
 
 ## Networks
 

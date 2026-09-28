@@ -213,13 +213,14 @@ describe("x402", () => {
     const decoded = decodePayment(
       paymentHeaders({ accepted: entries[0], payload: { authorization: AUTHORIZATION } }),
       REQUESTED,
+      true,
     );
     expect(decoded?.accepted).toEqual(entries[0]);
     expect(decoded?.payer).toBe(AUTHORIZATION.from.toLowerCase());
 
     // A payload naming no offer at all cannot be read.
     expect(
-      decodePayment(paymentHeaders({ payload: { authorization: AUTHORIZATION } }), REQUESTED),
+      decodePayment(paymentHeaders({ payload: { authorization: AUTHORIZATION } }), REQUESTED, true),
     ).toBe(undefined);
   });
 
@@ -229,7 +230,7 @@ describe("x402", () => {
     // nonce of the wrong size, which must never become a replay key.
     const entries = offersFor(true, "/res/v1/web/search");
     const decode = (payload: unknown) =>
-      decodePayment(paymentHeaders({ accepted: entries[0], payload }), REQUESTED);
+      decodePayment(paymentHeaders({ accepted: entries[0], payload }), REQUESTED, true);
 
     expect(decode({})).toBeUndefined();
     expect(decode({ authorization: { from: AUTHORIZATION.from } })).toBeUndefined();
@@ -247,10 +248,12 @@ describe("x402", () => {
     const first = decodePayment(
       paymentHeaders({ accepted: entries[0], payload: { authorization: AUTHORIZATION } }),
       REQUESTED,
+      true,
     );
     const second = decodePayment(
       paymentHeaders({ payload: { authorization: AUTHORIZATION }, accepted: entries[0] }),
       REQUESTED,
+      true,
     );
 
     expect(first?.claim.key).toBe(
@@ -270,6 +273,7 @@ describe("x402", () => {
         payload: { authorization: { ...AUTHORIZATION, validBefore } },
       }),
       REQUESTED,
+      true,
     );
 
     const window = (entries[0]?.maxTimeoutSeconds ?? 0) * 1000;
@@ -295,6 +299,7 @@ describe("x402", () => {
           payload: { authorization: AUTHORIZATION },
         }),
         REQUESTED,
+        true,
       ),
     );
 
@@ -312,6 +317,7 @@ describe("x402", () => {
       decodePayment(
         paymentHeaders({ accepted: entries[0], payload: { authorization: AUTHORIZATION } }),
         REQUESTED,
+        true,
       ),
     );
 
@@ -333,6 +339,7 @@ describe("x402", () => {
           payload: { authorization: AUTHORIZATION },
         }),
         requested,
+        true,
       );
 
     for (const requested of [
@@ -364,6 +371,7 @@ describe("x402", () => {
         payload: { authorization: AUTHORIZATION },
       }),
       REQUESTED,
+      true,
     );
 
     const extensions = relayedExtensions(decoded);
@@ -425,6 +433,7 @@ describe("x402", () => {
     const decoded = decodePayment(
       paymentHeaders({ accepted: discounted, payload: { authorization: AUTHORIZATION } }),
       REQUESTED,
+      true,
     );
     expect(decoded).toBeDefined();
     expect(entries).not.toContainEqual(decoded?.accepted);
@@ -571,6 +580,37 @@ describe("x402", () => {
     expect(extensions.bazaar.info.input.method).toBe("GET");
   });
 
+  it("an_unlisted_deployment_offers_nothing_to_a_catalog", async () => {
+    // Staging settles real payments too, but must not appear in a catalog. The
+    // declaration is what makes a facilitator catalog a path, so it goes, and the
+    // resource goes with it.
+    const built = client(
+      { facilitatorUrl: "https://x402.org/facilitator", cdp: undefined, enableBazaar: false },
+      true,
+    );
+    const entry = challenge(built, REQUESTED, "GET");
+    const { extensions } = decodeChallenge((entry as { value: string }).value) as {
+      extensions: Record<string, unknown>;
+    };
+    expect(extensions.bazaar).toBeUndefined();
+    // The mppx route binding is not a listing, and clients still need it to sign.
+    expect(extensions.mppx).toBeDefined();
+
+    const decoded = decodePayment(
+      paymentHeaders({
+        x402Version: 2,
+        resource: { url: REQUESTED },
+        extensions: { bazaar: { info: {}, schema: {} } },
+        accepted: offersFor(true, "/res/v1/web/search")[0],
+        payload: { authorization: AUTHORIZATION },
+      }),
+      REQUESTED,
+      false,
+    );
+    expect(relayedResource(decoded)).toBeUndefined();
+    expect(relayedExtensions(decoded).bazaar).toBeUndefined();
+  });
+
   it("every_declaration_is_one_a_facilitator_accepts", () => {
     // A facilitator refuses a declaration whose call does not satisfy its own
     // schema, and settles the payment without listing it. These are the checks the
@@ -587,6 +627,7 @@ describe("x402", () => {
           payload: { authorization: AUTHORIZATION },
         }),
         requested,
+        true,
       );
       if (decoded === undefined) {
         throw new Error("the payment decodes");
