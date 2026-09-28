@@ -15,6 +15,7 @@ import {
   PAYMENT_REQUIRED_HEADER,
 } from "../src/x402.js";
 import {
+  assertRecorded,
   decodeChallenge,
   mockOrigin,
   restoreNetwork,
@@ -639,5 +640,54 @@ describe("x402", () => {
       expect(settled, data.errorReason).toHaveLength(1);
       restoreNetwork();
     }
+  });
+
+  it("a_facilitator_refusal_with_an_error_status_is_a_402", async () => {
+    // CDP refuses a payment it cannot accept with an error status and a verdict,
+    // which the SDK throws. That is a refused payment, not our outage.
+    const verifyAnswering = async (statusCode: number, data: object) => {
+      mockOrigin(TEST_FACILITATOR)
+        .intercept({ method: "POST", path: "/verify" })
+        .reply(statusCode, data);
+      const metrics = new Metrics();
+      let searched = false;
+      const response = await handle(
+        testClient(),
+        undefined,
+        metrics,
+        "/res/v1/web/search",
+        REQUESTED,
+        paymentHeaders({
+          x402Version: 2,
+          accepted: offersFor(true, "/res/v1/web/search")[0],
+          payload: { authorization: AUTHORIZATION },
+        }),
+        async () => {
+          searched = true;
+          return new Response(JSON.stringify({ web: {} }), { status: 200 });
+        },
+      );
+      restoreNetwork();
+      return { response, metrics, searched };
+    };
+
+    const refused = await verifyAnswering(400, {
+      isValid: false,
+      invalidReason: "invalid_exact_evm_payload_signature",
+    });
+    expect(refused.response.status).toBe(402);
+    expect(refused.searched).toBe(false);
+    await assertRecorded(
+      refused.metrics,
+      'bx402_payments_total{rail="x402",endpoint="/res/v1/web/search",outcome="refused"} 1',
+    );
+
+    // An error that carries no verdict is still the facilitator failing us.
+    const failing = await verifyAnswering(503, { error: "unavailable" });
+    expect(failing.response.status).toBe(502);
+    await assertRecorded(
+      failing.metrics,
+      'bx402_payments_total{rail="x402",endpoint="/res/v1/web/search",outcome="network_unavailable"} 1',
+    );
   });
 });
