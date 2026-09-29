@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { validate } from "mppx/discovery";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Config } from "../src/config.js";
@@ -221,5 +222,36 @@ describe("discovery", () => {
     expect(() => renderGuide("{if nonsense}\n{end}", facts)).toThrow(/unknown section/);
     expect(() => renderGuide("{end}", facts)).toThrow(/without a matching/);
     expect(() => renderGuide("{if mpp}", facts)).toThrow(/never closed/);
+  });
+
+  it("the_shipped_guide_says_only_what_each_deployment_does", () => {
+    // Every combination of facts, rendered from the file the service serves, so
+    // an edit that leaves testnet or MPP wording where it does not apply fails.
+    const template = readFileSync(new URL("../llms.txt", import.meta.url), "utf8");
+    for (const testnet of [false, true]) {
+      for (const mpp of [false, true]) {
+        for (const mpptestnet of [false, true]) {
+          const facts = { testnet, mpp, mpptestnet: mpp && mpptestnet };
+          const label = JSON.stringify(facts);
+          const guide = renderGuide(template, facts);
+
+          expect(guide, label).not.toMatch(/\{if |\{end\}|\{prices?\}|\n\n\n/);
+          expect(guide, label).toContain(
+            "purl --max-amount 5000 '{origin}/res/v1/web/search?q=rust'",
+          );
+          expect(guide, label).toContain("| `/res/v1/local/descriptions` | 5000 | $5/1k |");
+          if (!facts.testnet && !facts.mpptestnet) {
+            expect(guide, label).not.toMatch(/sepolia|testnet|moderato/i);
+          }
+          if (!mpp) {
+            expect(guide, label).not.toMatch(/\bmpp\b|pathusd|\btempo\b/i);
+          } else {
+            expect(guide, label).toContain("Both rails charge the same price");
+          }
+          expect(guide.includes("Base Sepolia"), label).toBe(testnet);
+          expect(guide.includes("npx mppx --network testnet"), label).toBe(facts.mpptestnet);
+        }
+      }
+    }
   });
 });
