@@ -1,7 +1,14 @@
 import { validate } from "mppx/discovery";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Config } from "../src/config.js";
-import { type DiscoveryDocument, document, GUIDE_PATH } from "../src/discovery.js";
+import {
+  type DiscoveryDocument,
+  document,
+  GUIDE_PATH,
+  type GuideFacts,
+  guideFacts,
+  renderGuide,
+} from "../src/discovery.js";
 import { ENDPOINTS } from "../src/endpoints.js";
 import { VERSION } from "../src/version.js";
 import { accepts } from "../src/x402.js";
@@ -157,5 +164,62 @@ describe("discovery", () => {
     // so rather than read as mainnet.
     const tempo = offersOf(doc, WEB_SEARCH_PATH).find((offer) => offer.method === "tempo");
     expect(tempo?.description).toContain("Moderato");
+  });
+
+  it("the_guide_facts_come_from_the_started_rails", async () => {
+    // Allowing testnets is only permission. MPP serves whichever chain its
+    // endpoint reports, so a mainnet Tempo endpoint is not described as Moderato.
+    const facts = async (overrides: Partial<Config>, chain: number) =>
+      guideFacts(await buildContext(testConfig(overrides), chain));
+
+    expect(await facts({}, TEST_CHAIN_ID)).toEqual({
+      testnet: true,
+      mpp: true,
+      mpptestnet: true,
+    });
+    expect(await facts({}, MAINNET)).toEqual({ testnet: true, mpp: true, mpptestnet: false });
+    expect(await facts({ allowTestnet: false, mpp: undefined }, MAINNET)).toEqual({
+      testnet: false,
+      mpp: false,
+      mpptestnet: false,
+    });
+  });
+
+  it("the_guide_keeps_only_the_sections_true_of_the_deployment", () => {
+    const facts: GuideFacts = { testnet: false, mpp: false, mpptestnet: false };
+    const template = [
+      "always, {price}",
+      "{if testnet}",
+      "testnet only",
+      "{end}",
+      "{if !testnet}",
+      "mainnet only",
+      "{if mpp}",
+      "never, nested inside a kept section",
+      "{end}",
+      "{end}",
+      "",
+      "{if mpp}",
+      "",
+      "dropped with its blank line",
+      "{end}",
+      "",
+      "{prices}",
+    ].join("\n");
+
+    const rows = ENDPOINTS.map(
+      (endpoint) =>
+        `| \`${endpoint.path}\` | ${endpoint.priceBaseUnits} | $${endpoint.priceBaseUnits / 1000}/1k |`,
+    );
+    expect(renderGuide(template, facts)).toBe(
+      ["always, 5000", "mainnet only", "", ...rows].join("\n"),
+    );
+  });
+
+  it("a_guide_the_renderer_cannot_read_refuses_startup", () => {
+    const facts: GuideFacts = { testnet: false, mpp: false, mpptestnet: false };
+    expect(() => renderGuide("{if nonsense}\n{end}", facts)).toThrow(/unknown section/);
+    expect(() => renderGuide("{end}", facts)).toThrow(/without a matching/);
+    expect(() => renderGuide("{if mpp}", facts)).toThrow(/never closed/);
   });
 });
