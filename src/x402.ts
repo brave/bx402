@@ -14,7 +14,12 @@ import {
   HTTPFacilitatorClient,
   x402ResourceServer,
 } from "@x402/core/server";
-import { type PaymentPayload, type PaymentRequirements, VerifyError } from "@x402/core/types";
+import {
+  type PaymentPayload,
+  type PaymentRequirements,
+  SettleError,
+  VerifyError,
+} from "@x402/core/types";
 import { findDefaultAsset, getDefaultAsset } from "@x402/evm";
 import { registerExactEvmScheme } from "@x402/evm/exact/server";
 import { base, baseSepolia } from "viem/chains";
@@ -519,6 +524,8 @@ export async function handle(
       receipt = await client.server.settlePayment(payload, offer);
     } catch (err) {
       metrics.recordPaymentStep(RAIL, step.SETTLE, seconds(settleStarted));
+      // A facilitator that refuses with an error status still decided.
+      decided = err instanceof SettleError;
       log.error(`x402 facilitator settle failed: ${describe(err)}`);
       return ended(outcome.SETTLE_FAILED, gatewayError(SETTLE_FAILED));
     }

@@ -150,7 +150,7 @@ costs the full price again on MPP.
 | `404`, empty body | The path is not sold | Check the table above |
 | `405`, empty body, `Allow: GET,HEAD` | Method not served | Use GET or HEAD |
 | `502` `{"error":"payment facilitator unavailable"}` | x402 verification could not reach the facilitator. Not charged | Retry later |
-| `502` `{"error":"x402 payment could not be settled"}` | Settlement failed after the search ran. The result is withheld and the money did not move | Retry later |
+| `502` `{"error":"x402 payment could not be settled"}` | Settlement failed after the search ran. The result is withheld and the money did not move | Retry with a new payment. The same one is refused |
 | `502` `{"error":"upstream error"}` | Brave Search could not be reached. x402: not charged. MPP: charged, receipt attached | Retry, knowing an MPP retry pays again |
 | `503` `{"error":"service temporarily unavailable"}` | The payer could not be screened right now | Retry later. Not charged |
 | Any other status with a Brave body | Brave's own answer, relayed byte for byte. x402: not charged. MPP: charged | Read Brave's error |
