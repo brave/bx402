@@ -58,7 +58,7 @@ export async function app(
   // names it. The responses are built by hand rather than through `c.json()`,
   // which would append a charset to the content type.
   const discoveryBody = Buffer.from(JSON.stringify(document(ctx)));
-  const guideFor = guide();
+  const guideFor = guide(ctx);
   const served = [
     { path: DISCOVERY_PATH, type: "application/json", body: () => discoveryBody },
     {

@@ -394,6 +394,13 @@ function pathOf(resource: string): string {
  * `accepts` table, so discovery can never disagree with the challenge. Empty
  * for a path that is not sold.
  */
+/** Whether any offer this rail makes settles on a testnet. */
+export function servesTestnet(client: Client): boolean {
+  return [...client.accepts.values()]
+    .flat()
+    .some((entry) => NETWORKS.find((network) => network.caip2 === entry.network)?.testnet);
+}
+
 export function offers(client: Client, path: string): Offer[] {
   return (client.accepts.get(path) ?? []).map((entry) => ({
     intent: "charge",

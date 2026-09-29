@@ -250,6 +250,11 @@ function charges(chainId: number): Map<string, Charge> {
  * units, so the conversion runs back through `parseUnits` on the very charge
  * the challenge advertises rather than reading the catalog a second time.
  */
+/** Whether the chain this rail settles on is a testnet. */
+export function servesTestnet(client: Client): boolean {
+  return [...client.charges.values()].some((charge) => NETWORKS.get(charge.chainId)?.testnet);
+}
+
 export function offers(client: Client, path: string): Offer[] {
   const charge = client.charges.get(path);
   if (charge === undefined) {
