@@ -1,6 +1,6 @@
 # bx402
 
-[![CI](https://github.com/brave-experiments/bx402/actions/workflows/ci.yml/badge.svg)](https://github.com/brave-experiments/bx402/actions/workflows/ci.yml)
+[![CI](https://github.com/brave/bx402/actions/workflows/ci.yml/badge.svg)](https://github.com/brave/bx402/actions/workflows/ci.yml)
 [![made-with-typescript](https://img.shields.io/badge/Made%20with-TypeScript-3178c6.svg)](https://www.typescriptlang.org/)
 
 A pay-per-request proxy in front of the [Brave Search API](https://brave.com/search/api/).
@@ -48,7 +48,7 @@ other facilitator host.
 
 1. Clone, then write your Brave Search API key to `.env`:
    ```sh
-   git clone git@github.com:brave-experiments/bx402.git
+   git clone git@github.com:brave/bx402.git
    cd bx402
    echo "BRAVE_SEARCH_API_KEY=<your-key>" >> .env
    ```
