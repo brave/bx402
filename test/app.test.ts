@@ -216,7 +216,7 @@ describe("app", () => {
     expect(response.headers.get("www-authenticate")).toBeNull();
 
     // The guide the document links is the file at the repository root.
-    expect(await response.text()).toMatch(/^# bx402\n/);
+    expect(await response.text()).toMatch(/^# http:\/\/localhost\n/);
 
     // Counted under its own label rather than folded into `other`.
     await assertRecorded(

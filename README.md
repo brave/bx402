@@ -138,8 +138,9 @@ its own price.
 `GET /openapi.json` serves a machine-readable description of every paid path and the
 offers each enabled rail advertises, following MPP's payment discovery draft.
 `GET /llms.txt` serves the buyer's guide in prose, linked from the document's
-`docs.llms`. Both are free and cached for five minutes; discovery is advisory, and the
-`402` challenge stays authoritative.
+`docs.llms`. The guide is rendered for the deployment serving it, so it names only that
+deployment's origin, rails, and networks. Both are free and cached for five minutes;
+discovery is advisory, and the `402` challenge stays authoritative.
 
 With `X402_ENABLE_BAZAAR=true`, the x402 challenge also declares how to call each paid path
 under `extensions.bazaar`, so a facilitator that keeps a catalog can list the endpoint once a
