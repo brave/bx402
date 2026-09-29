@@ -110,7 +110,7 @@ describe("discovery", () => {
   it("the_document_states_the_required_top_level_fields", async () => {
     const doc = await documentFor();
     expect(doc.openapi).toBe("3.1.0");
-    expect(doc.info.title).toBe("bx402");
+    expect(doc.info.title).toBe("Brave Search API");
     expect(doc.info.version).toBe(VERSION);
     expect(Object.keys(doc.paths)).toHaveLength(ENDPOINTS.length);
     // Relative, so a reader resolves it against wherever the document was

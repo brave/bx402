@@ -53,7 +53,13 @@ export interface Offer {
 }
 
 /** Where the project documents itself for a human reader. */
-const HOMEPAGE = "https://github.com/brave-experiments/bx402";
+const HOMEPAGE = "https://github.com/brave/bx402";
+
+/**
+ * Brave's reference for what each paid path accepts and returns. Query
+ * parameters are forwarded unchanged, so Brave's reference is this API's.
+ */
+const API_REFERENCE = "https://api-dashboard.search.brave.com/documentation";
 
 /** One paid path's `get` operation, as far as the document states it. */
 interface Operation {
@@ -98,13 +104,13 @@ export function document(ctx: Context): DiscoveryDocument {
     openapi: "3.1.0",
     // The build version stands in for the API version, so a release bumps
     // the document even when the paid surface is unchanged.
-    info: { title: "bx402", version: VERSION },
+    info: { title: "Brave Search API", version: VERSION },
     "x-service-info": {
       categories: ["search"],
       // The guide link is relative for the same reason there is no `servers`
       // block. A reader that fetched the document has the origin to resolve it
       // against.
-      docs: { homepage: HOMEPAGE, apiReference: `${HOMEPAGE}#endpoints`, llms: GUIDE_PATH },
+      docs: { homepage: HOMEPAGE, apiReference: API_REFERENCE, llms: GUIDE_PATH },
     },
     paths,
   };
