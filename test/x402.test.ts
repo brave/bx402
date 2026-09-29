@@ -740,4 +740,55 @@ describe("x402", () => {
       'bx402_payments_total{rail="x402",endpoint="/res/v1/web/search",outcome="network_unavailable"} 1',
     );
   });
+
+  it("a_settlement_the_facilitator_refused_keeps_the_claim", async () => {
+    // CDP refuses a settlement with an error status, which the SDK throws. That is
+    // still a decision, so the same payment sent again must not buy another search.
+    // A settle call that gets no answer at all decided nothing and stays retryable.
+    const sendTwice = async (settle: { statusCode: number; data: object } | undefined) => {
+      const pool = mockOrigin(TEST_FACILITATOR);
+      pool.intercept({ method: "POST", path: "/verify" }).reply(200, { isValid: true }).persist();
+      if (settle !== undefined) {
+        pool
+          .intercept({ method: "POST", path: "/settle" })
+          .reply(settle.statusCode, settle.data)
+          .persist();
+      }
+      const built = testClient();
+      let searches = 0;
+      const statuses: number[] = [];
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const response = await handle(
+          built,
+          undefined,
+          new Metrics(),
+          "/res/v1/web/search",
+          REQUESTED,
+          paymentHeaders({
+            x402Version: 2,
+            accepted: offersFor(true, "/res/v1/web/search")[0],
+            payload: { authorization: AUTHORIZATION },
+          }),
+          async () => {
+            searches++;
+            return new Response(JSON.stringify({ web: {} }), { status: 200 });
+          },
+        );
+        statuses.push(response.status);
+      }
+      restoreNetwork();
+      return { statuses, searches };
+    };
+
+    const refused = await sendTwice({
+      statusCode: 400,
+      data: { ...SETTLED, success: false, errorReason: "invalid_payload", transaction: "" },
+    });
+    expect(refused.statuses).toEqual([502, 402]);
+    expect(refused.searches).toBe(1);
+
+    const unanswered = await sendTwice(undefined);
+    expect(unanswered.statuses).toEqual([502, 502]);
+    expect(unanswered.searches).toBe(2);
+  });
 });
