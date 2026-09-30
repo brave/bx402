@@ -205,13 +205,35 @@ function bazaarDeclaration(call: Call): Record<string, unknown> {
         },
         output: {
           type: "object",
-          properties: { type: { type: "string" }, example: { type: "object" } },
+          properties: { type: { type: "string" }, example: schemaOf(call.response) },
           required: ["type"],
         },
       },
       required: ["input"],
     },
   };
+}
+
+/**
+ * A JSON Schema stating the type of every field `example` shows, so a catalog
+ * can describe the response. Derived from the example rather than written out,
+ * so the two cannot drift apart. No field is marked required, since Brave leaves
+ * out what a result does not have. Every number is a `number`, since a sample
+ * value that happens to be whole says nothing about the next one.
+ */
+function schemaOf(example: unknown): Record<string, unknown> {
+  if (Array.isArray(example)) {
+    const [first] = example;
+    return first === undefined ? { type: "array" } : { type: "array", items: schemaOf(first) };
+  }
+  if (example === null) {
+    return { type: "null" };
+  }
+  if (typeof example === "object") {
+    const properties = Object.entries(example).map(([name, value]) => [name, schemaOf(value)]);
+    return { type: "object", properties: Object.fromEntries(properties) };
+  }
+  return { type: typeof example };
 }
 
 /**
