@@ -220,7 +220,7 @@ export const PLACE_SEARCH: Call = {
   },
   required: [],
   query: { q: "coffee", location: "san francisco ca united states", count: 5 },
-  response: { type: "locations", query: { original: "coffee" }, results: [PLACE] },
+  response: { type: "locations", results: [PLACE] },
 };
 
 /** What both lookups by location id take. */
