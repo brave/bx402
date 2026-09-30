@@ -129,6 +129,29 @@ function declarationFor(requested: string): unknown {
   return (decodeChallenge(entry.value) as { extensions: { bazaar: unknown } }).extensions.bazaar;
 }
 
+/** The fields of `value` that `schema` does not describe, as dotted paths. */
+function undescribed(value: unknown, schema: unknown, at = "example"): string[] {
+  const { type, properties, items } = (schema ?? {}) as {
+    type?: string;
+    properties?: Record<string, unknown>;
+    items?: unknown;
+  };
+  if (Array.isArray(value)) {
+    return type !== "array" ? [at] : value.flatMap((item) => undescribed(item, items, `${at}[]`));
+  }
+  if (value !== null && typeof value === "object") {
+    if (type !== "object") {
+      return [at];
+    }
+    return Object.entries(value).flatMap(([name, field]) =>
+      properties?.[name] === undefined
+        ? [`${at}.${name}`]
+        : undescribed(field, properties[name], `${at}.${name}`),
+    );
+  }
+  return type === (value === null ? "null" : typeof value) ? [] : [at];
+}
+
 /**
  * The most a cold `402` header may take. A client echoes the challenge's resource
  * and extensions back in `PAYMENT-SIGNATURE`, and common proxies refuse a request
@@ -650,6 +673,22 @@ describe("x402", () => {
       const listed = extractDiscoveryInfo(decoded.payload, decoded.accepted);
       expect(listed?.resourceUrl, path).toBe(`https://bx402.example.com${path}`);
       expect(listed?.discoveryInfo, path).toEqual((declaration as { info: unknown }).info);
+    }
+  });
+
+  it("every_output_schema_describes_each_field_of_its_example", () => {
+    // A catalog ranks a listing higher when the response is described field by
+    // field. The facilitator's check above only proves the example fits the
+    // schema, which a bare `object` would also pass.
+    for (const { path } of ENDPOINTS) {
+      const { info, schema } = declarationFor(`https://bx402.example.com${path}?q=rust`) as {
+        info: { output: { example: unknown } };
+        schema: { properties: { output: { properties: { example: unknown } } } };
+      };
+      expect(
+        undescribed(info.output.example, schema.properties.output.properties.example),
+        path,
+      ).toEqual([]);
     }
   });
 
