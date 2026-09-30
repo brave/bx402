@@ -18,6 +18,13 @@ import {
   WEB_SEARCH,
 } from "./calls.js";
 
+/**
+ * Where the service icon is served, free, for a catalog to show beside the
+ * service name. Kept here with the paid paths because the router serves it and a
+ * rail links to it, and both already read this module.
+ */
+export const ICON_PATH = "/icon.png";
+
 /** Brave's Web Search and LLM Context rate, $5.00 per 1,000 requests. */
 const SEARCH_RATE = 5_000;
 

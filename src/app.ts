@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import type { Dispatcher } from "undici";
 import type { Config } from "./config.js";
-import { CACHE_CONTROL, DISCOVERY_PATH, document, GUIDE_PATH, guide } from "./discovery.js";
+import { CACHE_CONTROL, DISCOVERY_PATH, document, GUIDE_PATH, guide, icon } from "./discovery.js";
 import { absoluteUri, context, dispatch } from "./dispatch.js";
-import { ENDPOINTS } from "./endpoints.js";
+import { ENDPOINTS, ICON_PATH } from "./endpoints.js";
 import { AppError, emptyBody } from "./error.js";
 import { endpointLabel, type Metrics, measure, seconds } from "./metrics.js";
 import type { RestrictedAddressScreener } from "./screener.js";
@@ -50,15 +50,16 @@ export async function app(
   // Liveness probe: 200 with an empty body while the server is up.
   hono.on(ALLOWED_METHODS, HEALTH_PATH, () => emptyBody(200));
 
-  // The discovery document and the buyer's guide are served free, since they
-  // are how a client learns what is for sale before paying. Registered
-  // outside the endpoint loop, so dispatch never runs for them and neither
-  // path can turn payable. The document is built once, since the rails it reads
-  // are fixed at startup. The guide fills in its origin the same way a `402`
-  // names it. The responses are built by hand rather than through `c.json()`,
-  // which would append a charset to the content type.
+  // The discovery document, the buyer's guide, and the service icon are served
+  // free, since they are how a client learns what is for sale before paying.
+  // Registered outside the endpoint loop, so dispatch never runs for them and
+  // none of these paths can turn payable. The document is built once, since the
+  // rails it reads are fixed at startup. The guide fills in its origin the same
+  // way a `402` names it. The responses are built by hand rather than through
+  // `c.json()`, which would append a charset to the content type.
   const discoveryBody = Buffer.from(JSON.stringify(document(ctx)));
   const guideFor = guide(ctx);
+  const iconBody = icon();
   const served = [
     { path: DISCOVERY_PATH, type: "application/json", body: () => discoveryBody },
     {
@@ -66,6 +67,7 @@ export async function app(
       type: "text/plain; charset=utf-8",
       body: (request: Request) => guideFor(new URL(absoluteUri(request)).origin),
     },
+    { path: ICON_PATH, type: "image/png", body: () => iconBody },
   ];
   for (const { path, type, body } of served) {
     hono.on(

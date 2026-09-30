@@ -44,7 +44,7 @@ const OTHER = "other";
  * The free routes, each counted under its own path. The literals are repeated
  * here rather than imported so a label cannot drift from its route.
  */
-const FREE_PATHS = new Set(["/health", "/openapi.json", "/llms.txt"]);
+const FREE_PATHS = new Set(["/health", "/openapi.json", "/llms.txt", "/icon.png"]);
 
 /** The payment rails, as the `rail` label on every per-rail metric spells them. */
 export type RailLabel = "x402" | "mpp";

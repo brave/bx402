@@ -159,27 +159,37 @@ export function guideFacts(ctx: Context): GuideFacts {
 }
 
 /**
- * The buyer's guide, read from `llms.txt` beside the package manifest. The
- * build is `tsc` alone with no bundler, so the file cannot be imported as a
- * module. It sits one level up from `src` and from the compiled `dist` alike,
- * the same trick `version.ts` uses for the manifest.
+ * The buyer's guide, read from `llms.txt`. The guide is rendered for `ctx`
+ * once. The returned function fills `{origin}` with the origin the guide was
+ * fetched from, so its commands work as pasted.
+ */
+export function guide(ctx: Context): (origin: string) => string {
+  const template = shipped("llms.txt", "the buyer's guide").toString("utf8");
+  const rendered = renderGuide(template, guideFacts(ctx));
+  return (origin) => rendered.replaceAll("{origin}", origin);
+}
+
+/** The service icon, read from `icon.png`. */
+export function icon(): Buffer {
+  return shipped("icon.png", "the service icon");
+}
+
+/**
+ * A file shipped beside the package manifest. The build is `tsc` alone with no
+ * bundler, so the file cannot be imported as a module. It sits one level up
+ * from `src` and from the compiled `dist` alike, the same trick `version.ts`
+ * uses for the manifest.
  *
  * Called when the routes are built, never at module load. A missing or
  * unreadable file refuses startup: serving a 404 instead would mean a healthy
- * looking deployment whose document advertises a guide it does not have.
- *
- * The guide is rendered for `ctx` once. The returned function fills `{origin}`
- * with the origin the guide was fetched from, so its commands work as pasted.
+ * looking deployment that links a file it does not have.
  */
-export function guide(ctx: Context): (origin: string) => string {
-  let template: string;
+function shipped(name: string, what: string): Buffer {
   try {
-    template = readFileSync(new URL("../llms.txt", import.meta.url), "utf8");
+    return readFileSync(new URL(`../${name}`, import.meta.url));
   } catch (err) {
-    throw AppError.invalidConfig(`the buyer's guide llms.txt cannot be read: ${describe(err)}`);
+    throw AppError.invalidConfig(`${what} ${name} cannot be read: ${describe(err)}`);
   }
-  const rendered = renderGuide(template, guideFacts(ctx));
-  return (origin) => rendered.replaceAll("{origin}", origin);
 }
 
 /** The path the guide's example commands buy. */
