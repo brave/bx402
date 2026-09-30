@@ -1,7 +1,11 @@
 import { generateKeyPairSync } from "node:crypto";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import type { PaymentPayload } from "@x402/core/types";
-import { extractDiscoveryInfo, validateDiscoveryExtension } from "@x402/extensions/bazaar";
+import {
+  extractDiscoveryInfo,
+  isValidIconUrl,
+  validateDiscoveryExtension,
+} from "@x402/extensions/bazaar";
 import { afterEach, describe, expect, it } from "vitest";
 import { ENDPOINTS, findEndpoint } from "../src/endpoints.js";
 import { Metrics } from "../src/metrics.js";
@@ -80,6 +84,7 @@ function relayedResource(decoded: { payload: PaymentPayload } | undefined):
       description?: string;
       serviceName?: string;
       tags?: string[];
+      iconUrl?: string;
     }
   | undefined {
   if (decoded === undefined) {
@@ -87,7 +92,13 @@ function relayedResource(decoded: { payload: PaymentPayload } | undefined):
   }
   return (
     decoded.payload as {
-      resource?: { url?: string; description?: string; serviceName?: string; tags?: string[] };
+      resource?: {
+        url?: string;
+        description?: string;
+        serviceName?: string;
+        tags?: string[];
+        iconUrl?: string;
+      };
     }
   ).resource;
 }
@@ -307,6 +318,7 @@ describe("x402", () => {
     expect(resource?.description).toBe(RELAYED_DESCRIPTION);
     expect(resource?.serviceName).toBe("Brave Search");
     expect(resource?.tags).toEqual(["search", "web", "news", "images", "llm"]);
+    expect(resource?.iconUrl).toBe("https://bx402.example.com/icon.png");
   });
 
   it("decode_states_the_resource_even_when_the_payer_echoed_none", () => {
@@ -537,7 +549,7 @@ describe("x402", () => {
     const built = testClient();
     const entry = challenge(built, "https://bx402.example.com/res/v1/web/search?q=rust", "GET");
     const { resource } = decodeChallenge((entry as { value: string }).value) as {
-      resource: { serviceName: string; tags: string[] };
+      resource: { serviceName: string; tags: string[]; iconUrl: string };
     };
 
     const printableAscii = /^[\x20-\x7e]+$/;
@@ -552,6 +564,8 @@ describe("x402", () => {
     // two tags that differ only in case and drops the second.
     const lowercased = resource.tags.map((tag) => tag.toLowerCase());
     expect(new Set(lowercased).size).toBe(resource.tags.length);
+    // A facilitator drops an icon it finds unsafe to fetch.
+    expect(isValidIconUrl(resource.iconUrl)).toBe(true);
   });
 
   it("every_description_stays_inside_what_a_facilitator_accepts", () => {
