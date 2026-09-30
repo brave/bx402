@@ -17,6 +17,7 @@ import {
 import {
   type PaymentPayload,
   type PaymentRequirements,
+  type ResourceInfo,
   SettleError,
   VerifyError,
 } from "@x402/core/types";
@@ -27,7 +28,7 @@ import type { Call } from "./calls.js";
 import { ClaimStore } from "./claims.js";
 import type { X402Config } from "./config.js";
 import type { Offer } from "./discovery.js";
-import { ENDPOINTS, findEndpoint } from "./endpoints.js";
+import { ENDPOINTS, findEndpoint, ICON_PATH } from "./endpoints.js";
 import { AppError, describe, isRecord, jsonError } from "./error.js";
 import { log } from "./log.js";
 import { type Metrics, type Outcome, outcome, seconds, step } from "./metrics.js";
@@ -153,6 +154,27 @@ const SERVICE_NAME = "Brave Search";
  * five it can read and counts two that differ only in case as one.
  */
 const SERVICE_TAGS = ["search", "web", "news", "images", "llm"];
+
+/**
+ * The `resource` a catalog lists `url` under: what it is, and the service it
+ * belongs to. The icon is the one this service serves on the origin of `url`,
+ * left out when `url` is not a URL.
+ */
+function catalogResource(url: string, description: string): ResourceInfo {
+  const resource: ResourceInfo = {
+    url,
+    description,
+    mimeType: "application/json",
+    serviceName: SERVICE_NAME,
+    tags: SERVICE_TAGS,
+  };
+  try {
+    resource.iconUrl = new URL(ICON_PATH, url).href;
+  } catch {
+    // Not a URL, so there is no origin to serve an icon from.
+  }
+  return resource;
+}
 
 /**
  * How to call a paid path. `info` states a sample call and what it returns, and
@@ -322,13 +344,7 @@ export function challenge(
   const envelope = {
     x402Version: 2,
     error: PAYMENT_REQUIRED,
-    resource: {
-      url: resource,
-      description: endpoint.description,
-      mimeType: "application/json",
-      serviceName: SERVICE_NAME,
-      tags: SERVICE_TAGS,
-    },
+    resource: catalogResource(resource, endpoint.description),
     accepts: offers,
     extensions: routeExtensions(method, endpoint.call, client.enableBazaar),
   };
@@ -353,7 +369,7 @@ export function challenge(
  */
 function relayedResource(
   requested: string,
-): { resource: Record<string, unknown>; declaration: Record<string, unknown> } | undefined {
+): { resource: ResourceInfo; declaration: Record<string, unknown> } | undefined {
   let url: URL;
   try {
     url = new URL(requested);
@@ -368,13 +384,7 @@ function relayedResource(
     return undefined;
   }
   return {
-    resource: {
-      url: `${url.origin}${url.pathname}`,
-      description: endpoint.description,
-      mimeType: "application/json",
-      serviceName: SERVICE_NAME,
-      tags: SERVICE_TAGS,
-    },
+    resource: catalogResource(`${url.origin}${url.pathname}`, endpoint.description),
     declaration: bazaarDeclaration(endpoint.call),
   };
 }

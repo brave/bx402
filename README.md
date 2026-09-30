@@ -148,6 +148,10 @@ payment for it settles. Facilitators that keep no catalog ignore the declaration
 `false` leaves it out, so only a deployment meant to be listed, such as production, ever is.
 Any other value stops startup.
 
+The challenge's `resource` also names the service for a catalog: `serviceName`, `tags`, and
+an `iconUrl` pointing at `GET /icon.png`, a free route on the same origin that serves the
+Brave logo.
+
 ## Networks
 
 Both rails charge the same price for the same endpoint, to the same treasury, in base

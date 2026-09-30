@@ -498,6 +498,7 @@ describe("x402", () => {
         mimeType: "application/json",
         serviceName: "Brave Search",
         tags: ["search", "web", "news", "images", "llm"],
+        iconUrl: "https://bx402.example.com/icon.png",
       },
       accepts: [
         {
