@@ -225,6 +225,33 @@ describe("app", () => {
     );
   });
 
+  it("the_icon_is_served_free_at_icon_png", async () => {
+    const metrics = new Metrics();
+    const hono = await buildApp(testConfig(), undefined, metrics);
+    const response = await hono.request("/icon.png");
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/png");
+    expect(response.headers.get("cache-control")).toBe("public, max-age=300");
+    expect(response.headers.get("payment-required")).toBeNull();
+    expect(response.headers.get("www-authenticate")).toBeNull();
+
+    // The file at the repository root, and a PNG by its signature.
+    const body = Buffer.from(await response.arrayBuffer());
+    expect(body.subarray(0, 8)).toEqual(
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
+
+    const head = await hono.request("/icon.png", { method: "HEAD" });
+    expect(head.headers.get("content-type")).toBe("image/png");
+    expect(await head.text()).toBe("");
+
+    await assertRecorded(
+      metrics,
+      'bx402_http_requests_total{endpoint="/icon.png",method="GET",status="200"} 1',
+    );
+  });
+
   it("the_guide_names_the_origin_it_was_fetched_from", async () => {
     // Behind the load balancer the service sees plain HTTP, and the public origin
     // comes from `Host` and `X-Forwarded-Proto`, as it does for a `402`.
