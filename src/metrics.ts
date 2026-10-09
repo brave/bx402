@@ -204,6 +204,14 @@ export class Metrics {
     labelNames: ["outcome"],
     registers: [this.registry],
   });
+  private readonly replays = new Counter({
+    name: "bx402_payment_replays",
+    help:
+      "Attempts to reuse a payment proof that had already been used, by rail. Refused like any " +
+      "other declined payment, so this is the only place a repeat shows up.",
+    labelNames: ["rail"],
+    registers: [this.registry],
+  });
 
   constructor() {
     this.registry.setContentType(openMetricsContentType);
@@ -223,6 +231,15 @@ export class Metrics {
   /** Record one challenge the service issued instead of serving the request. */
   recordChallenge(endpoint: string, reason: Challenge): void {
     this.challenges.inc({ endpoint, reason });
+  }
+
+  /**
+   * Record one attempt to reuse a payment proof that had already been used.
+   * The first use of a proof is not counted; only repeats are, so the series
+   * reads as the number of attempts a refusal turned away.
+   */
+  recordReplay(rail: RailLabel): void {
+    this.replays.inc({ rail });
   }
 
   /** Record how one payment ended. */
