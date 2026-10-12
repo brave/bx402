@@ -12,3 +12,7 @@ overrides:
   # (GHSA advisories fixed in 1.18.0). Only its API client uses axios; the JWT
   # signing this service imports never touches it.
   axios: 1.20.0
+  # vite brings in postcss 8.5.28, which asks for source-map-js 1.2.1. That
+  # version is flagged by pnpm audit (GHSA-68fv-2mgg-jv7q, fixed in 1.2.2) and
+  # only vitest reaches it, never the service.
+  source-map-js: ^1.2.2
