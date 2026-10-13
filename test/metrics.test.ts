@@ -14,6 +14,27 @@ describe("metrics", () => {
     expect(rendered.endsWith("# EOF\n")).toBe(true);
   });
 
+  it("a_client_is_counted_under_the_name_it_sends_or_not_at_all", async () => {
+    const metrics = new Metrics();
+    metrics.recordClient("mppx/0.9.2", "x402");
+    // The x402 JavaScript SDKs send no User-Agent, which is its own answer.
+    metrics.recordClient(undefined, "x402");
+    metrics.recordClient("", "none");
+
+    await assertRecorded(metrics, 'bx402_client_requests_total{client="mppx",attempted="x402"} 1');
+    await assertRecorded(metrics, 'bx402_client_requests_total{client="none",attempted="x402"} 1');
+    await assertRecorded(metrics, 'bx402_client_requests_total{client="none",attempted="none"} 1');
+  });
+
+  it("a_client_cannot_name_itself_into_a_series_of_its_own", async () => {
+    const metrics = new Metrics();
+    metrics.recordClient("SomethingNobodyKnows/3.1", "mpp");
+    metrics.recordClient("AnotherOne/1.0", "mpp");
+
+    await assertRecorded(metrics, 'bx402_client_requests_total{client="other",attempted="mpp"} 2');
+    await assertNotRecorded(metrics, "SomethingNobodyKnows");
+  });
+
   it("payers_are_reported_as_a_count_and_never_as_addresses", async () => {
     const metrics = new Metrics();
     metrics.recordPayer("x402", "0xdeadbeef");

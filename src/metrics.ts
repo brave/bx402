@@ -62,6 +62,33 @@ const FREE_PATHS = new Set(["/health", "/openapi.json", "/llms.txt", "/icon.png"
 /** The payment rails, as the `rail` label on every per-rail metric spells them. */
 export type RailLabel = "x402" | "mpp";
 
+/**
+ * What a request attempted: a rail, nothing at all, or both at once. The four
+ * values are spelled here rather than imported from the dispatcher, so the
+ * label cannot drift into something unbounded.
+ */
+export type Attempt = RailLabel | "none" | "both";
+
+/**
+ * Clients that name themselves in a `User-Agent`, matched on what the header
+ * starts with. The list is short on purpose: a client is only ever counted
+ * under a name from here, so no caller can mint a series by naming itself
+ * something new. It grows from what the unrecognized clients log reports.
+ */
+const CLIENTS = ["purl", "mppx", "curl"];
+
+/**
+ * A request that named no client. The x402 JavaScript SDKs send no
+ * `User-Agent` at all, so silence is an answer in itself and not an unknown.
+ */
+const NO_CLIENT = "none";
+
+/** The most unrecognized `User-Agent`s one process reports, so logs cannot be flooded. */
+const UNKNOWN_CLIENTS_LOGGED = 16;
+
+/** The longest `User-Agent` echoed into a log line. */
+const USER_AGENT_LOGGED = 80;
+
 /** Why a request was answered with a challenge instead of served. */
 export const challenge = {
   /** The request carried no payment proof at all. */
@@ -248,6 +275,12 @@ export class Metrics {
     labelNames: ["rail", "endpoint", "asset"],
     registers: [this.registry],
   });
+  private readonly clientRequests = new Counter({
+    name: "bx402_client_requests",
+    help: "Requests to a paid endpoint, by the client that sent them and what it attempted.",
+    labelNames: ["client", "attempted"],
+    registers: [this.registry],
+  });
   private readonly payers = new PayerWindow();
   private readonly distinctPayers = new Gauge({
     name: "bx402_distinct_payers",
@@ -291,6 +324,30 @@ export class Metrics {
    */
   collectProcessMetrics(): void {
     collectDefaultMetrics({ register: this.registry });
+  }
+
+  /** `User-Agent`s already reported as unrecognized, so each is logged once. */
+  private readonly unknownClients = new Set<string>();
+
+  /**
+   * Record one request to a paid endpoint, by the client that sent it and the
+   * rail it attempted.
+   *
+   * A `User-Agent` this does not recognize is counted as `other` and written to
+   * the log once, which is how the recognized list grows: from what arrives
+   * rather than from guesswork. The log line is trimmed to printable ASCII,
+   * since the header is whatever the caller chose to send.
+   */
+  recordClient(userAgent: string | undefined, attempted: Attempt): void {
+    const client = clientLabel(userAgent);
+    if (client === OTHER && userAgent !== undefined) {
+      const named = userAgent.slice(0, USER_AGENT_LOGGED).replace(/[^ -~]/g, "");
+      if (!this.unknownClients.has(named) && this.unknownClients.size < UNKNOWN_CLIENTS_LOGGED) {
+        this.unknownClients.add(named);
+        log.info(`client not recognized: ${named}`);
+      }
+    }
+    this.clientRequests.inc({ client, attempted });
   }
 
   /**
@@ -383,6 +440,19 @@ export function endpointLabel(path: string): string {
     return path;
   }
   return findEndpoint(path)?.path ?? OTHER;
+}
+
+/**
+ * The label for the client that sent a request, read from its `User-Agent`.
+ * Anything outside `CLIENTS` collapses to one value, since the header is
+ * caller-supplied and otherwise unbounded.
+ */
+function clientLabel(userAgent: string | undefined): string {
+  if (userAgent === undefined || userAgent.trim() === "") {
+    return NO_CLIENT;
+  }
+  const named = userAgent.toLowerCase();
+  return CLIENTS.find((client) => named.startsWith(client)) ?? OTHER;
 }
 
 /** The methods served, and so the only method labels a caller can mint. */
