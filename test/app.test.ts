@@ -579,6 +579,22 @@ describe("app", () => {
     }
   });
 
+  it("every_request_to_a_paid_route_counts_the_client_that_sent_it", async () => {
+    const metrics = new Metrics();
+    const hono = await buildApp(testConfig(), undefined, metrics);
+
+    await hono.request("/res/v1/web/search?q=rust", { headers: { "user-agent": "mppx/0.9.2" } });
+    await hono.request("/res/v1/web/search?q=rust");
+    // Refused for carrying nothing readable, and still counted as an x402 attempt.
+    await hono.request("/res/v1/web/search?q=rust", {
+      headers: { "user-agent": "purl/1.0", "payment-signature": "not-a-payment" },
+    });
+
+    await assertRecorded(metrics, 'bx402_client_requests_total{client="mppx",attempted="none"} 1');
+    await assertRecorded(metrics, 'bx402_client_requests_total{client="none",attempted="none"} 1');
+    await assertRecorded(metrics, 'bx402_client_requests_total{client="purl",attempted="x402"} 1');
+  });
+
   // A payer on a rail this deployment turned off is counted apart from a caller
   // who simply did not pay, which is the only way to see clients stranded
   // against a disabled rail.

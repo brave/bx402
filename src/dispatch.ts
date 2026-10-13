@@ -131,6 +131,7 @@ export function dispatch(ctx: Context): MiddlewareHandler {
     const url = new URL(c.req.url);
     const endpoint = endpointLabel(url.pathname);
     const rail = classify(c.req.raw.headers);
+    ctx.metrics.recordClient(c.req.header("user-agent"), rail);
 
     // Whichever rail runs answers for itself; what is left here is the request
     // that never reached one, and the reason it did not.
