@@ -9,7 +9,14 @@
  */
 
 import { serve } from "@hono/node-server";
-import { Counter, Gauge, Histogram, openMetricsContentType, Registry } from "@prometheus-io/client";
+import {
+  Counter,
+  collectDefaultMetrics,
+  Gauge,
+  Histogram,
+  openMetricsContentType,
+  Registry,
+} from "@prometheus-io/client";
 import { Hono, type MiddlewareHandler } from "hono";
 import { findEndpoint } from "./endpoints.js";
 import { describe } from "./error.js";
@@ -215,6 +222,20 @@ export class Metrics {
     }).set({ version: VERSION }, 1);
   }
 
+  /**
+   * Report the process itself as well as the traffic: memory, heap, event loop
+   * lag, garbage collection, and the clock time the process started.
+   *
+   * Without these a graph cannot tell a restart from a lull, since every
+   * counter here starts at zero again and nothing says when zero began.
+   *
+   * Called by the listener rather than from the constructor, because each test
+   * builds a registry of its own and none of them wants a process collector.
+   */
+  collectProcessMetrics(): void {
+    collectDefaultMetrics({ register: this.registry });
+  }
+
   /** Record what one address screen decided. */
   recordScreening(decided: Screening): void {
     this.screenings.inc({ outcome: decided });
@@ -311,6 +332,8 @@ export function measure(metrics: Metrics): MiddlewareHandler {
  * unobserved.
  */
 export function serveMetrics(metrics: Metrics): Promise<never> {
+  metrics.collectProcessMetrics();
+
   const hono = new Hono();
   hono.get("/metrics", async (c) => {
     try {

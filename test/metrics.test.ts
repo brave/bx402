@@ -12,4 +12,16 @@ describe("metrics", () => {
     const rendered = await new Metrics().render();
     expect(rendered.endsWith("# EOF\n")).toBe(true);
   });
+
+  it("the_process_is_reported_only_once_asked_for", async () => {
+    const metrics = new Metrics();
+    expect(await metrics.render()).not.toContain("process_start_time_seconds");
+
+    metrics.collectProcessMetrics();
+
+    const rendered = await metrics.render();
+    expect(rendered).toContain("process_start_time_seconds");
+    expect(rendered).toContain("nodejs_heap_size_used_bytes");
+    expect(rendered.endsWith("# EOF\n")).toBe(true);
+  });
 });
