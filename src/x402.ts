@@ -607,6 +607,7 @@ export async function handle(
     }
 
     metrics.recordPayment(RAIL, endpoint, outcome.SETTLED);
+    metrics.recordPayer(RAIL, payer);
     // The price comes from the catalog, so what we count as earned is what we
     // advertised rather than anything the payer said.
     const sold = findEndpoint(endpoint);

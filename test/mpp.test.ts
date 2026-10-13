@@ -371,5 +371,7 @@ describe("mpp", () => {
       metrics,
       `bx402_charged_base_units_total{rail="mpp",endpoint="${WEB_SEARCH_PATH}",asset="pathUSD on Tempo Testnet (Moderato)"} 5000`,
     );
+    // The payer the signature names, counted and not recorded.
+    await assertRecorded(metrics, 'bx402_distinct_payers{rail="mpp"} 1');
   });
 });

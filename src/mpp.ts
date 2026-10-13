@@ -449,10 +449,14 @@ export async function handle(
     return ended(outcome.UNSUPPORTED, paymentRejected());
   }
 
+  // Recovered once and used twice: the screen below reads it, and a settled
+  // charge counts it.
+  const payer = signerAddress(payload);
+
   // Screen before the charge, so a blocked payer's transaction is never
   // broadcast and no funds move.
   if (screener !== undefined) {
-    const denied = await screener.requireAllowed(signerAddress(payload), paymentRejected());
+    const denied = await screener.requireAllowed(payer, paymentRejected());
     if (denied !== undefined) {
       return ended(outcome.SCREENED_OUT, denied);
     }
@@ -481,6 +485,9 @@ export async function handle(
   metrics.recordPaymentStep(RAIL, step.CHARGE, seconds(started));
 
   metrics.recordPayment(RAIL, endpoint, outcome.SETTLED);
+  if (payer !== undefined) {
+    metrics.recordPayer(RAIL, payer);
+  }
   // The price comes from the catalog, so what we count as earned is what we
   // advertised rather than anything the payer said.
   const sold = findEndpoint(endpoint);

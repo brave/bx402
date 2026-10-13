@@ -610,6 +610,8 @@ describe("app", () => {
       metrics,
       'bx402_charged_base_units_total{rail="x402",endpoint="/res/v1/web/search",asset="USDC on Base Sepolia (testnet)"} 5000',
     );
+    // One payer paid, counted without the address itself being recorded.
+    await assertRecorded(metrics, 'bx402_distinct_payers{rail="x402"} 1');
     for (const step of ["verify", "settle"]) {
       await assertRecorded(
         metrics,
