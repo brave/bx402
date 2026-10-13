@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { failure, Metrics, step } from "../src/metrics.js";
 import { VERSION } from "../src/version.js";
-import { assertRecorded } from "./support.js";
+import { assertNotRecorded, assertRecorded } from "./support.js";
 
 describe("metrics", () => {
   it("the_exposition_carries_the_running_version", async () => {
@@ -12,6 +12,16 @@ describe("metrics", () => {
   it("the_exposition_ends_the_way_openmetrics_requires", async () => {
     const rendered = await new Metrics().render();
     expect(rendered.endsWith("# EOF\n")).toBe(true);
+  });
+
+  it("payers_are_reported_as_a_count_and_never_as_addresses", async () => {
+    const metrics = new Metrics();
+    metrics.recordPayer("x402", "0xdeadbeef");
+    metrics.recordPayer("x402", "0xdeadbeef");
+    metrics.recordPayer("x402", "0xfeedface");
+
+    await assertRecorded(metrics, 'bx402_distinct_payers{rail="x402"} 2');
+    await assertNotRecorded(metrics, "0xdeadbeef");
   });
 
   it("a_failure_is_counted_under_the_step_that_failed", async () => {

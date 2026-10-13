@@ -21,6 +21,7 @@ import { Hono, type MiddlewareHandler } from "hono";
 import { findEndpoint } from "./endpoints.js";
 import { describe } from "./error.js";
 import { log } from "./log.js";
+import { PayerWindow } from "./payers.js";
 import { VERSION } from "./version.js";
 
 /**
@@ -247,6 +248,20 @@ export class Metrics {
     labelNames: ["rail", "endpoint", "asset"],
     registers: [this.registry],
   });
+  private readonly payers = new PayerWindow();
+  private readonly distinctPayers = new Gauge({
+    name: "bx402_distinct_payers",
+    help: "Distinct addresses that paid in the last hour, by rail.",
+    labelNames: ["rail"],
+    registers: [this.registry],
+    // Read at scrape time, so the count falls back to zero once a rail stops
+    // being paid rather than holding whatever it last saw.
+    collect: () => {
+      for (const [rail, paying] of this.payers.counts()) {
+        this.distinctPayers.set({ rail }, paying);
+      }
+    },
+  });
   private readonly screenings = new Counter({
     name: "bx402_screenings",
     help: "Address screens performed, by what they decided.",
@@ -276,6 +291,15 @@ export class Metrics {
    */
   collectProcessMetrics(): void {
     collectDefaultMetrics({ register: this.registry });
+  }
+
+  /**
+   * Record that `payer` paid, so one caller in a loop can be told apart from
+   * many callers. The address is held only to be counted, and only the count is
+   * ever reported.
+   */
+  recordPayer(rail: RailLabel, payer: string): void {
+    this.payers.seen(rail, payer);
   }
 
   /** Record what one address screen decided. */
