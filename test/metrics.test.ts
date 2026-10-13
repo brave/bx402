@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Metrics } from "../src/metrics.js";
+import { failure, Metrics, step } from "../src/metrics.js";
 import { VERSION } from "../src/version.js";
 import { assertRecorded } from "./support.js";
 
@@ -12,6 +12,15 @@ describe("metrics", () => {
   it("the_exposition_ends_the_way_openmetrics_requires", async () => {
     const rendered = await new Metrics().render();
     expect(rendered.endsWith("# EOF\n")).toBe(true);
+  });
+
+  it("a_failure_is_counted_under_the_step_that_failed", async () => {
+    const metrics = new Metrics();
+    metrics.recordFailure("x402", step.SETTLE, failure.ALREADY_USED);
+    await assertRecorded(
+      metrics,
+      'bx402_payment_failures_total{rail="x402",step="settle",reason="already_used"} 1',
+    );
   });
 
   it("a_fast_answer_is_timed_in_milliseconds", async () => {

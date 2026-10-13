@@ -132,6 +132,37 @@ export const screening = {
 export type Screening = (typeof screening)[keyof typeof screening];
 
 /**
+ * Why a payment failed, in terms neither rail is specific to.
+ *
+ * `outcome` says what became of a payment, which is what a caller experiences.
+ * This says what went wrong, which is what an operator needs: whether the money
+ * was never there, whether the proof had already been spent, or whether nobody
+ * answered us at all. Each rail maps what it was told onto these, so one
+ * vocabulary covers a facilitator, a chain, and whatever comes next.
+ */
+export const failure = {
+  /** Nobody answered: a timeout, a refused connection, an unreadable reply. */
+  UNREACHABLE: "unreachable",
+  /** The payer could not cover the charge. */
+  INSUFFICIENT_FUNDS: "insufficient_funds",
+  /** The proof had already been spent, so the money moved once at most. */
+  ALREADY_USED: "already_used",
+  /** The proof was refused as bad: the signature, the scheme, or the network. */
+  INVALID_PAYMENT: "invalid_payment",
+  /** The proof arrived outside the window it is valid for. */
+  EXPIRED: "expired",
+  /** Reported as still in flight, and never reported as done. */
+  PENDING: "pending",
+  /** Refused without saying why. */
+  UNSPECIFIED: "unspecified",
+  /** A reason we have no bucket for, so one caller cannot mint a series. */
+  OTHER: "other",
+} as const;
+
+/** One of the `failure` reasons. */
+export type Failure = (typeof failure)[keyof typeof failure];
+
+/**
  * The steps of a payment worth timing separately. Which steps a rail reports
  * depends on whether it can check a payment without moving money.
  */
@@ -197,6 +228,12 @@ export class Metrics {
     labelNames: ["rail", "endpoint", "outcome"],
     registers: [this.registry],
   });
+  private readonly paymentFailures = new Counter({
+    name: "bx402_payment_failures",
+    help: "Payments that failed, by rail, the step that failed and why.",
+    labelNames: ["rail", "step", "reason"],
+    registers: [this.registry],
+  });
   private readonly paymentStepDuration = new Histogram({
     name: "bx402_payment_step_duration_seconds",
     help: "Time for one step of a payment, by rail.",
@@ -254,6 +291,17 @@ export class Metrics {
   /** Record how one payment ended. */
   recordPayment(rail: RailLabel, endpoint: string, ended: Outcome): void {
     this.payments.inc({ rail, endpoint, outcome: ended });
+  }
+
+  /**
+   * Record why one payment failed, alongside the outcome the caller saw.
+   *
+   * A payment that fails records both: `recordPayment` for what happened, this
+   * for why. The two counters are read together, so a rate of failures tells an
+   * operator which of them is theirs to fix.
+   */
+  recordFailure(rail: RailLabel, failed: Step, reason: Failure): void {
+    this.paymentFailures.inc({ rail, step: failed, reason });
   }
 
   /** Record how long one step of a payment took. */
