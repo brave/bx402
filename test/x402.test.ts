@@ -785,6 +785,10 @@ describe("x402", () => {
       refused.metrics,
       'bx402_payments_total{rail="x402",endpoint="/res/v1/web/search",outcome="refused"} 1',
     );
+    await assertRecorded(
+      refused.metrics,
+      'bx402_payment_failures_total{rail="x402",step="verify",reason="invalid_payment"} 1',
+    );
 
     // An error that carries no verdict is still the facilitator failing us.
     const failing = await verifyAnswering(503, { error: "unavailable" });
@@ -792,6 +796,54 @@ describe("x402", () => {
     await assertRecorded(
       failing.metrics,
       'bx402_payments_total{rail="x402",endpoint="/res/v1/web/search",outcome="network_unavailable"} 1',
+    );
+    // Nobody answered, so the reason is ours and not the payer's.
+    await assertRecorded(
+      failing.metrics,
+      'bx402_payment_failures_total{rail="x402",step="verify",reason="unreachable"} 1',
+    );
+  });
+
+  it("a_refused_settlement_is_counted_under_the_reason_it_was_refused_for", async () => {
+    // A spent proof and a broken one are refused with the same reason code, so
+    // the facilitator's wording is the only thing that tells them apart.
+    const settleRefusing = async (data: object): Promise<Metrics> => {
+      const pool = mockOrigin(TEST_FACILITATOR);
+      pool.intercept({ method: "POST", path: "/verify" }).reply(200, { isValid: true }).persist();
+      pool.intercept({ method: "POST", path: "/settle" }).reply(400, data).persist();
+      const metrics = new Metrics();
+      await handle(
+        testClient(),
+        undefined,
+        metrics,
+        "/res/v1/web/search",
+        REQUESTED,
+        paymentHeaders({
+          x402Version: 2,
+          accepted: offersFor(true, "/res/v1/web/search")[0],
+          payload: { authorization: AUTHORIZATION },
+        }),
+        async () => new Response(JSON.stringify({ web: {} }), { status: 200 }),
+      );
+      restoreNetwork();
+      return metrics;
+    };
+
+    const refusal = { ...SETTLED, success: false, transaction: "", errorReason: "invalid_payload" };
+
+    const spent = await settleRefusing({
+      ...refusal,
+      errorMessage: "authorization nonce already submitted; transaction already on-chain",
+    });
+    await assertRecorded(
+      spent,
+      'bx402_payment_failures_total{rail="x402",step="settle",reason="already_used"} 1',
+    );
+
+    const malformed = await settleRefusing(refusal);
+    await assertRecorded(
+      malformed,
+      'bx402_payment_failures_total{rail="x402",step="settle",reason="invalid_payment"} 1',
     );
   });
 

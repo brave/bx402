@@ -31,7 +31,15 @@ import type { Offer } from "./discovery.js";
 import { ENDPOINTS, findEndpoint, ICON_PATH } from "./endpoints.js";
 import { AppError, describe, isRecord, jsonError } from "./error.js";
 import { log } from "./log.js";
-import { type Metrics, type Outcome, outcome, seconds, step } from "./metrics.js";
+import {
+  type Failure,
+  failure,
+  type Metrics,
+  type Outcome,
+  outcome,
+  seconds,
+  step,
+} from "./metrics.js";
 import type { RestrictedAddressScreener } from "./screener.js";
 
 /**
@@ -534,19 +542,30 @@ export async function handle(
     // failure, not the client's, so it is a 502 rather than a 402. A facilitator
     // that refuses the payment with an error status still refused it.
     const verifyStarted = performance.now();
-    let verified: { isValid: boolean };
+    let verified: { isValid: boolean; invalidReason?: string; invalidMessage?: string };
     try {
       verified = await client.server.verifyPayment(payload, offer);
     } catch (err) {
       metrics.recordPaymentStep(RAIL, step.VERIFY, seconds(verifyStarted));
       if (err instanceof VerifyError) {
+        metrics.recordFailure(
+          RAIL,
+          step.VERIFY,
+          refusedBecause(err.invalidReason, err.invalidMessage),
+        );
         return ended(outcome.REFUSED, paymentRejected(GENERIC_REJECTION));
       }
+      metrics.recordFailure(RAIL, step.VERIFY, failure.UNREACHABLE);
       log.error(`x402 facilitator verify failed: ${describe(err)}`);
       return ended(outcome.NETWORK_UNAVAILABLE, gatewayError("payment facilitator unavailable"));
     }
     metrics.recordPaymentStep(RAIL, step.VERIFY, seconds(verifyStarted));
     if (verified.isValid !== true) {
+      metrics.recordFailure(
+        RAIL,
+        step.VERIFY,
+        refusedBecause(verified.invalidReason, verified.invalidMessage),
+      );
       return ended(outcome.REFUSED, paymentRejected(GENERIC_REJECTION));
     }
 
@@ -558,19 +577,31 @@ export async function handle(
     // The value we verified settles unchanged. Withhold the already produced
     // body unless it settles.
     const settleStarted = performance.now();
-    let receipt: { success: boolean };
+    let receipt: { success: boolean; errorReason?: string; errorMessage?: string };
     try {
       receipt = await client.server.settlePayment(payload, offer);
     } catch (err) {
       metrics.recordPaymentStep(RAIL, step.SETTLE, seconds(settleStarted));
       // A facilitator that refuses with an error status still decided.
       decided = err instanceof SettleError;
+      metrics.recordFailure(
+        RAIL,
+        step.SETTLE,
+        err instanceof SettleError
+          ? refusedBecause(err.errorReason, err.errorMessage)
+          : failure.UNREACHABLE,
+      );
       log.error(`x402 facilitator settle failed: ${describe(err)}`);
       return ended(outcome.SETTLE_FAILED, gatewayError(SETTLE_FAILED));
     }
     metrics.recordPaymentStep(RAIL, step.SETTLE, seconds(settleStarted));
     decided = true;
     if (receipt.success !== true) {
+      metrics.recordFailure(
+        RAIL,
+        step.SETTLE,
+        refusedBecause(receipt.errorReason, receipt.errorMessage),
+      );
       log.error(`x402 facilitator reported settlement failure: ${JSON.stringify(receipt)}`);
       return ended(outcome.SETTLE_FAILED, gatewayError(SETTLE_FAILED));
     }
@@ -588,6 +619,48 @@ export async function handle(
       client.claims.release(claim.key, token);
     }
   }
+}
+
+/**
+ * Wording a facilitator uses for a proof that has already been spent.
+ *
+ * The reason code for that case is `invalid_payload`, the same code a malformed
+ * proof gets, so the message is the only thing separating a replayed payment
+ * from a broken one. This only ever picks a label on a counter: a facilitator
+ * that words it differently counts as an invalid payment, and nothing about the
+ * refusal the caller sees depends on it.
+ */
+const ALREADY_SPENT = ["already submitted", "already used", "nonce already"];
+
+/**
+ * Why the facilitator refused, read from the reason code it reported and, for
+ * a spent proof, the message.
+ *
+ * A reason we have no bucket for counts as `other`, so a facilitator cannot
+ * grow the metric one label at a time.
+ */
+function refusedBecause(reason: string | undefined, message: string | undefined): Failure {
+  if (reason === undefined || reason === "") {
+    return failure.UNSPECIFIED;
+  }
+  const wording = (message ?? "").toLowerCase();
+  if (ALREADY_SPENT.some((spent) => wording.includes(spent))) {
+    return failure.ALREADY_USED;
+  }
+  const code = reason.toLowerCase();
+  if (code.includes("insufficient_funds")) {
+    return failure.INSUFFICIENT_FUNDS;
+  }
+  if (code.includes("valid_before") || code.includes("valid_after") || code.includes("expired")) {
+    return failure.EXPIRED;
+  }
+  if (code.includes("pending")) {
+    return failure.PENDING;
+  }
+  if (code.startsWith("invalid") || code.startsWith("unsupported")) {
+    return failure.INVALID_PAYMENT;
+  }
+  return failure.OTHER;
 }
 
 /** The authorization fields a payment must carry: an EVM address and a 32-byte nonce. */
