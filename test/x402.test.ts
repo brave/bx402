@@ -166,10 +166,11 @@ describe("x402", () => {
     expect(decoded?.claim.expires).toBeLessThanOrEqual(Date.now() + window);
   });
 
-  it("decode_blanks_the_resource_url_the_client_echoed", () => {
+  it("decode_strips_the_resource_the_client_echoed", () => {
     // What was searched is the payer's business. The facilitator verifies the
     // signature and the requirements, neither of which names the resource, so
-    // the URL we relay leaves vacant instead of crossing to Coinbase.
+    // nothing about it crosses to Coinbase: the key leaves the payload
+    // entirely, whatever the client echoed.
     const entries = offersFor(true, "/res/v1/web/search");
     const decoded = decodePayment(
       paymentHeaders({
@@ -177,6 +178,7 @@ describe("x402", () => {
         resource: {
           url: "https://bx402.example.com/res/v1/web/search?q=private",
           description: "Brave Search API - Web / Search",
+          mimeType: "application/json",
         },
         accepted: entries[0],
         payload: { authorization: AUTHORIZATION },
@@ -185,11 +187,29 @@ describe("x402", () => {
     if (decoded === undefined) {
       throw new Error("the payment decodes");
     }
-    const resource = (decoded.payload as { resource?: { url?: string; description?: string } })
-      .resource;
-    expect(resource?.url).toBe("");
-    expect(resource?.description).toBe("Brave Search API - Web / Search");
+    expect((decoded.payload as { resource?: unknown }).resource).toBeUndefined();
     expect(decoded.accepted).toEqual(entries[0]);
+  });
+
+  it("decode_strips_any_resource_shape_the_client_sends", () => {
+    // `delete` reads nothing, so whatever shape arrives — the vacant echo the
+    // facilitator was probed with, a bare string, or null — the same key
+    // leaves the payload and the same behavior is guaranteed.
+    const entries = offersFor(true, "/res/v1/web/search");
+    for (const resource of [{ url: "" }, "https://bx402.example.com", null]) {
+      const decoded = decodePayment(
+        paymentHeaders({
+          x402Version: 2,
+          resource,
+          accepted: entries[0],
+          payload: { authorization: AUTHORIZATION },
+        }),
+      );
+      if (decoded === undefined) {
+        throw new Error("the payment decodes");
+      }
+      expect((decoded.payload as { resource?: unknown }).resource).toBeUndefined();
+    }
   });
 
   it("decode_tolerates_a_payload_without_a_resource", () => {
@@ -203,7 +223,7 @@ describe("x402", () => {
     expect((decoded.payload as { resource?: unknown }).resource).toBeUndefined();
   });
 
-  it("the_verify_call_carries_a_vacant_resource_url", async () => {
+  it("the_verify_call_carries_no_resource", async () => {
     // A real client echoes the challenge's resource back, query string
     // included. The rail relays the decoded payload to the facilitator, so a
     // recording stand-in reads exactly what the SDK would serialize.
@@ -244,9 +264,9 @@ describe("x402", () => {
     );
 
     expect(response.status).toBe(200);
-    // The URL the client echoed leaves vacant; the offer it accepted arrives
-    // unchanged.
-    expect(forwarded?.resource?.url).toBe("");
+    // The resource the client echoed never leaves; the offer it accepted
+    // arrives unchanged.
+    expect(forwarded?.resource).toBeUndefined();
     expect(forwarded?.accepted).toEqual(entries[0]);
   });
 

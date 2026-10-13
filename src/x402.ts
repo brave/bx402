@@ -427,11 +427,14 @@ const EIP3009_NONCE = /^0x[0-9a-fA-F]{64}$/;
  * them and is refused here, before it can reach the screener or the
  * facilitator carrying no identity.
  *
- * The resource URL the client echoed is blanked before anything leaves for the
- * facilitator: verification covers the signature and the requirements, neither
- * of which names the resource, so what was searched stays between the payer
- * and this service.
- */
+  * The resource the client echoed is stripped before anything leaves for the
+  * facilitator: verification covers the signature and the requirements, neither
+  * of which names the resource, so what was searched stays between the payer
+  * and this service. The key is dropped rather than held vacant — the
+  * facilitator accepts a payload with no `resource` at all, verified against
+  * the CDP testnet facilitator by direct probe, so no client-echoed field
+  * survives, not even one we have not thought to blank.
+  */
 export function decodePayment(headers: Headers):
   | {
       payload: PaymentPayload;
@@ -473,13 +476,9 @@ export function decodePayment(headers: Headers):
     return undefined;
   }
   const payer = from.toLowerCase();
-  // A vacant URL is the shape the SDK itself treats as "no resource", so the
-  // field is blanked rather than dropped: any facilitator that expects the key
-  // still finds it, holding nothing.
-  const { resource } = payload;
-  if (isRecord(resource) && typeof resource.url === "string") {
-    resource.url = "";
-  }
+  // Stripped, not blanked: the resource says what the payer searched, and
+  // nothing downstream reads it, so the key leaves the payload entirely.
+  delete payload.resource;
   return {
     payload: payload as PaymentPayload,
     accepted: accepted as PaymentRequirements,
