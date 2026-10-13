@@ -32,20 +32,26 @@ const BIND_HOSTNAME = "0.0.0.0";
 const BIND_PORT = 8090;
 
 /**
- * Buckets for every duration we record, in seconds.
+ * Buckets for the durations of work that leaves this process, in seconds.
  *
  * The boundaries straddle the deadlines this service enforces, so a histogram
  * answers directly how close requests are running to them: two seconds for a
  * screen, five for the upstream connect, fifteen for a whole upstream search.
  * The steps between one and five seconds are where paid requests actually land,
  * because settling on chain dominates the time.
- *
- * The milliseconds at the bottom are for the unpaid path, which is most of the
- * traffic: a challenge touches neither chain nor upstream and answers in single
- * digit milliseconds, so without those boundaries every challenge falls in one
- * bucket and the quantiles can only report the bucket.
  */
-const DURATION_BUCKETS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 3, 5, 8, 15, 30];
+const DURATION_BUCKETS = [0.05, 0.1, 0.25, 0.5, 1, 2, 3, 5, 8, 15, 30];
+
+/**
+ * Buckets for the time taken to answer a request, which is the one duration
+ * that is sometimes all our own work.
+ *
+ * A challenge touches neither chain nor upstream and answers in single digit
+ * milliseconds, and challenges are most of the traffic, so these carry
+ * boundaries below the ones above. Nothing that waits on a network gets them:
+ * a histogram of a chain settlement would spend them all on an empty range.
+ */
+const REQUEST_BUCKETS = [0.005, 0.01, 0.025, ...DURATION_BUCKETS];
 
 /**
  * Catch-all label value, used wherever the caller supplies something outside the
@@ -228,7 +234,7 @@ export class Metrics {
     name: "bx402_http_request_duration_seconds",
     help: "Time to answer a request, payment included.",
     labelNames: ["endpoint", "method"],
-    buckets: DURATION_BUCKETS,
+    buckets: REQUEST_BUCKETS,
     registers: [this.registry],
   });
   private readonly upstreamRequests = new Counter({
@@ -282,6 +288,8 @@ export class Metrics {
     registers: [this.registry],
   });
   private readonly payers = new PayerWindow();
+  /** `User-Agent`s already reported as unrecognized, so each is logged once. */
+  private readonly unknownClients = new Set<string>();
   private readonly distinctPayers = new Gauge({
     name: "bx402_distinct_payers",
     help: "Distinct addresses that paid in the last hour, by rail.",
@@ -313,11 +321,10 @@ export class Metrics {
   }
 
   /**
-   * Report the process itself as well as the traffic: memory, heap, event loop
-   * lag, garbage collection, and the clock time the process started.
+   * Report the process itself as well as the traffic.
    *
-   * Without these a graph cannot tell a restart from a lull, since every
-   * counter here starts at zero again and nothing says when zero began.
+   * Without this a graph cannot tell a restart from a lull, since every counter
+   * here starts at zero again and nothing says when zero began.
    *
    * Called by the listener rather than from the constructor, because each test
    * builds a registry of its own and none of them wants a process collector.
@@ -325,9 +332,6 @@ export class Metrics {
   collectProcessMetrics(): void {
     collectDefaultMetrics({ register: this.registry });
   }
-
-  /** `User-Agent`s already reported as unrecognized, so each is logged once. */
-  private readonly unknownClients = new Set<string>();
 
   /**
    * Record one request to a paid endpoint, by the client that sent it and the
@@ -340,9 +344,13 @@ export class Metrics {
    */
   recordClient(userAgent: string | undefined, attempted: Attempt): void {
     const client = clientLabel(userAgent);
-    if (client === OTHER && userAgent !== undefined) {
+    if (
+      client === OTHER &&
+      userAgent !== undefined &&
+      this.unknownClients.size < UNKNOWN_CLIENTS_LOGGED
+    ) {
       const named = userAgent.slice(0, USER_AGENT_LOGGED).replace(/[^ -~]/g, "");
-      if (!this.unknownClients.has(named) && this.unknownClients.size < UNKNOWN_CLIENTS_LOGGED) {
+      if (!this.unknownClients.has(named)) {
         this.unknownClients.add(named);
         log.info(`client not recognized: ${named}`);
       }
@@ -374,13 +382,7 @@ export class Metrics {
     this.payments.inc({ rail, endpoint, outcome: ended });
   }
 
-  /**
-   * Record why one payment failed, alongside the outcome the caller saw.
-   *
-   * A payment that fails records both: `recordPayment` for what happened, this
-   * for why. The two counters are read together, so a rate of failures tells an
-   * operator which of them is theirs to fix.
-   */
+  /** Record why one payment failed, alongside the outcome `recordPayment` gives it. */
   recordFailure(rail: RailLabel, failed: Step, reason: Failure): void {
     this.paymentFailures.inc({ rail, step: failed, reason });
   }

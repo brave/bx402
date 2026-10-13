@@ -19,7 +19,9 @@ import {
   type PaymentRequirements,
   type ResourceInfo,
   SettleError,
+  type SettleResponse,
   VerifyError,
+  type VerifyResponse,
 } from "@x402/core/types";
 import { findDefaultAsset, getDefaultAsset } from "@x402/evm";
 import { registerExactEvmScheme } from "@x402/evm/exact/server";
@@ -542,17 +544,13 @@ export async function handle(
     // failure, not the client's, so it is a 502 rather than a 402. A facilitator
     // that refuses the payment with an error status still refused it.
     const verifyStarted = performance.now();
-    let verified: { isValid: boolean; invalidReason?: string; invalidMessage?: string };
+    let verified: VerifyResponse;
     try {
       verified = await client.server.verifyPayment(payload, offer);
     } catch (err) {
       metrics.recordPaymentStep(RAIL, step.VERIFY, seconds(verifyStarted));
       if (err instanceof VerifyError) {
-        metrics.recordFailure(
-          RAIL,
-          step.VERIFY,
-          refusedBecause(err.invalidReason, err.invalidMessage),
-        );
+        metrics.recordFailure(RAIL, step.VERIFY, refusedBecause(err));
         return ended(outcome.REFUSED, paymentRejected(GENERIC_REJECTION));
       }
       metrics.recordFailure(RAIL, step.VERIFY, failure.UNREACHABLE);
@@ -561,11 +559,7 @@ export async function handle(
     }
     metrics.recordPaymentStep(RAIL, step.VERIFY, seconds(verifyStarted));
     if (verified.isValid !== true) {
-      metrics.recordFailure(
-        RAIL,
-        step.VERIFY,
-        refusedBecause(verified.invalidReason, verified.invalidMessage),
-      );
+      metrics.recordFailure(RAIL, step.VERIFY, refusedBecause(verified));
       return ended(outcome.REFUSED, paymentRejected(GENERIC_REJECTION));
     }
 
@@ -577,7 +571,7 @@ export async function handle(
     // The value we verified settles unchanged. Withhold the already produced
     // body unless it settles.
     const settleStarted = performance.now();
-    let receipt: { success: boolean; errorReason?: string; errorMessage?: string };
+    let receipt: SettleResponse;
     try {
       receipt = await client.server.settlePayment(payload, offer);
     } catch (err) {
@@ -587,9 +581,7 @@ export async function handle(
       metrics.recordFailure(
         RAIL,
         step.SETTLE,
-        err instanceof SettleError
-          ? refusedBecause(err.errorReason, err.errorMessage)
-          : failure.UNREACHABLE,
+        err instanceof SettleError ? refusedBecause(err) : failure.UNREACHABLE,
       );
       log.error(`x402 facilitator settle failed: ${describe(err)}`);
       return ended(outcome.SETTLE_FAILED, gatewayError(SETTLE_FAILED));
@@ -597,11 +589,7 @@ export async function handle(
     metrics.recordPaymentStep(RAIL, step.SETTLE, seconds(settleStarted));
     decided = true;
     if (receipt.success !== true) {
-      metrics.recordFailure(
-        RAIL,
-        step.SETTLE,
-        refusedBecause(receipt.errorReason, receipt.errorMessage),
-      );
+      metrics.recordFailure(RAIL, step.SETTLE, refusedBecause(receipt));
       log.error(`x402 facilitator reported settlement failure: ${JSON.stringify(receipt)}`);
       return ended(outcome.SETTLE_FAILED, gatewayError(SETTLE_FAILED));
     }
@@ -634,19 +622,22 @@ export async function handle(
 const ALREADY_SPENT = ["already submitted", "already used", "nonce already"];
 
 /**
- * Why the facilitator refused, read from the reason code it reported and, for
- * a spent proof, the message.
+ * Why the facilitator refused, read from what it reported. Takes the refusal
+ * itself, which is a verify answer, a settle answer, or either error the SDK
+ * throws for them, so all four read the same at the call site.
  *
  * A reason we have no bucket for counts as `other`, so a facilitator cannot
  * grow the metric one label at a time.
  */
-function refusedBecause(reason: string | undefined, message: string | undefined): Failure {
+function refusedBecause(refusal: {
+  invalidReason?: string;
+  invalidMessage?: string;
+  errorReason?: string;
+  errorMessage?: string;
+}): Failure {
+  const reason = refusal.invalidReason ?? refusal.errorReason;
   if (reason === undefined || reason === "") {
     return failure.UNSPECIFIED;
-  }
-  const wording = (message ?? "").toLowerCase();
-  if (ALREADY_SPENT.some((spent) => wording.includes(spent))) {
-    return failure.ALREADY_USED;
   }
   const code = reason.toLowerCase();
   if (code.includes("insufficient_funds")) {
@@ -659,7 +650,14 @@ function refusedBecause(reason: string | undefined, message: string | undefined)
     return failure.PENDING;
   }
   if (code.startsWith("invalid") || code.startsWith("unsupported")) {
-    return failure.INVALID_PAYMENT;
+    // Only a refusal that is already about the payload can be a spent proof,
+    // so the wording is read here rather than ahead of the codes, where a
+    // message mentioning a used nonce could outrank what the facilitator
+    // actually said.
+    const wording = (refusal.invalidMessage ?? refusal.errorMessage ?? "").toLowerCase();
+    return ALREADY_SPENT.some((spent) => wording.includes(spent))
+      ? failure.ALREADY_USED
+      : failure.INVALID_PAYMENT;
   }
   return failure.OTHER;
 }
@@ -761,14 +759,10 @@ export function decodePayment(
  * Attach the settlement receipt as the base64 `Payment-Response` header the
  * client reads back, leaving the response body untouched.
  */
-function attachReceipt(response: Response, receipt: { success: boolean }): Response {
+function attachReceipt(response: Response, receipt: SettleResponse): Response {
   const headers = new Headers(response.headers);
   try {
-    headers.set(
-      PAYMENT_RECEIPT_HEADER,
-      // biome-ignore lint/suspicious/noExplicitAny: the SDK's settle response shape.
-      encodePaymentResponseHeader(receipt as any),
-    );
+    headers.set(PAYMENT_RECEIPT_HEADER, encodePaymentResponseHeader(receipt));
   } catch {
     return response;
   }
