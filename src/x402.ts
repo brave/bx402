@@ -32,6 +32,7 @@ import { ENDPOINTS, findEndpoint, ICON_PATH } from "./endpoints.js";
 import { AppError, describe, isRecord, jsonError } from "./error.js";
 import { log } from "./log.js";
 import { type Metrics, type Outcome, outcome, seconds, step } from "./metrics.js";
+import { ReplayTally } from "./replays.js";
 import type { RestrictedAddressScreener } from "./screener.js";
 
 /**
@@ -274,6 +275,12 @@ export interface Client {
    * one search. The store's scope and bounds are documented in `claims.ts`.
    */
   claims: ClaimStore;
+  /**
+   * Attempt tallies over the same replay keys `claims` guards. Refusing a
+   * duplicate stops it; this records that it was tried, so a repeat is
+   * countable rather than invisible. Documented in `replays.ts`.
+   */
+  replays: ReplayTally;
   /** Whether the paid paths are offered to facilitator catalogs. */
   enableBazaar: boolean;
 }
@@ -317,6 +324,7 @@ export function client(rail: X402Config, allowTestnet: boolean): Client {
     server: resourceServer(new HTTPFacilitatorClient(config)),
     accepts: accepts(allowTestnet),
     claims: new ClaimStore(),
+    replays: new ReplayTally(),
     enableBazaar: rail.enableBazaar,
   };
 }
@@ -509,6 +517,17 @@ export async function handle(
   // so concurrent requests carrying the same payment are refused here before
   // they reach the screener, the facilitator, or the upstream. Refused like
   // any other payment we decline, so a duplicate learns nothing new.
+  //
+  // Counted before the claim is taken, so a repeat that is about to be refused
+  // is counted too. Refusing is what stops a replay; this is what makes it
+  // visible, since every refusal looks the same to the caller and nothing else
+  // records that the proof came back.
+  const attempts = client.replays.count(claim.key, claim.expires);
+  if (attempts > 1) {
+    metrics.recordReplay(RAIL);
+    log.warn(`x402 payment proof reused: attempt ${attempts} on ${endpoint}`);
+  }
+
   const token = client.claims.tryClaim(claim.key, claim.expires);
   if (token === undefined) {
     return ended(outcome.DUPLICATE, paymentRejected(GENERIC_REJECTION));
