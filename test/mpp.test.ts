@@ -369,7 +369,7 @@ describe("mpp", () => {
     // What we count as earned is what we advertised, never anything the payer said.
     await assertRecorded(
       metrics,
-      `bx402_charged_base_units_total{rail="mpp",endpoint="${WEB_SEARCH_PATH}"} 5000`,
+      `bx402_charged_base_units_total{rail="mpp",endpoint="${WEB_SEARCH_PATH}",asset="pathUSD on Tempo Testnet (Moderato)"} 5000`,
     );
   });
 });

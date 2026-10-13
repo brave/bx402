@@ -243,8 +243,8 @@ export class Metrics {
   });
   private readonly chargedBaseUnits = new Counter({
     name: "bx402_charged_base_units",
-    help: "Base units of currency charged for settled payments.",
-    labelNames: ["rail", "endpoint"],
+    help: "Base units charged for settled payments, by the money they were charged in.",
+    labelNames: ["rail", "endpoint", "asset"],
     registers: [this.registry],
   });
   private readonly screenings = new Counter({
@@ -313,9 +313,14 @@ export class Metrics {
    * Record the money a settled payment brought in, in the currency's base units.
    * Read from the catalog, so it is the price we advertised rather than anything
    * the payer stated.
+   *
+   * `asset` names the money and the chain it settled on, in the same words the
+   * catalog offers it in. Base units only mean anything next to that name: the
+   * scale belongs to the asset, so a stablecoin with different decimals cannot
+   * be added to this one, and a testnet dollar is not a dollar at all.
    */
-  recordCharge(rail: RailLabel, endpoint: string, baseUnits: number): void {
-    this.chargedBaseUnits.inc({ rail, endpoint }, baseUnits);
+  recordCharge(rail: RailLabel, endpoint: string, asset: string, baseUnits: number): void {
+    this.chargedBaseUnits.inc({ rail, endpoint, asset }, baseUnits);
   }
 
   /** Record one request the service answered. */

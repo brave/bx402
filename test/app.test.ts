@@ -608,7 +608,7 @@ describe("app", () => {
     // The catalog price, not anything the payer stated.
     await assertRecorded(
       metrics,
-      'bx402_charged_base_units_total{rail="x402",endpoint="/res/v1/web/search"} 5000',
+      'bx402_charged_base_units_total{rail="x402",endpoint="/res/v1/web/search",asset="USDC on Base Sepolia (testnet)"} 5000',
     );
     for (const step of ["verify", "settle"]) {
       await assertRecorded(

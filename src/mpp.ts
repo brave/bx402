@@ -485,7 +485,7 @@ export async function handle(
   // advertised rather than anything the payer said.
   const sold = findEndpoint(endpoint);
   if (sold !== undefined) {
-    metrics.recordCharge(RAIL, endpoint, sold.priceBaseUnits);
+    metrics.recordCharge(RAIL, endpoint, describeOffer(charge), sold.priceBaseUnits);
   }
   return attachReceipt(await runSearch(), receipt);
 }
