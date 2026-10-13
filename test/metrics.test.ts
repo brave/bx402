@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Metrics } from "../src/metrics.js";
 import { VERSION } from "../src/version.js";
+import { assertRecorded } from "./support.js";
 
 describe("metrics", () => {
   it("the_exposition_carries_the_running_version", async () => {
@@ -11,6 +12,15 @@ describe("metrics", () => {
   it("the_exposition_ends_the_way_openmetrics_requires", async () => {
     const rendered = await new Metrics().render();
     expect(rendered.endsWith("# EOF\n")).toBe(true);
+  });
+
+  it("a_fast_answer_is_timed_in_milliseconds", async () => {
+    const metrics = new Metrics();
+    metrics.recordRequest("/res/v1/web/search", "GET", 402, 0.003);
+    await assertRecorded(
+      metrics,
+      'bx402_http_request_duration_seconds_bucket{le="0.005",endpoint="/res/v1/web/search",method="GET"} 1',
+    );
   });
 
   it("the_process_is_reported_only_once_asked_for", async () => {

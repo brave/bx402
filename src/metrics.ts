@@ -38,8 +38,13 @@ const BIND_PORT = 8090;
  * screen, five for the upstream connect, fifteen for a whole upstream search.
  * The steps between one and five seconds are where paid requests actually land,
  * because settling on chain dominates the time.
+ *
+ * The milliseconds at the bottom are for the unpaid path, which is most of the
+ * traffic: a challenge touches neither chain nor upstream and answers in single
+ * digit milliseconds, so without those boundaries every challenge falls in one
+ * bucket and the quantiles can only report the bucket.
  */
-const DURATION_BUCKETS = [0.05, 0.1, 0.25, 0.5, 1, 2, 3, 5, 8, 15, 30];
+const DURATION_BUCKETS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 3, 5, 8, 15, 30];
 
 /**
  * Catch-all label value, used wherever the caller supplies something outside the
