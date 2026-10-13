@@ -26,7 +26,7 @@ import type { Offer } from "./discovery.js";
 import { ENDPOINTS, findEndpoint } from "./endpoints.js";
 import { AppError, describe, isRecord, jsonError } from "./error.js";
 import { log } from "./log.js";
-import { type Metrics, type Outcome, outcome, seconds, step } from "./metrics.js";
+import { failure, type Metrics, type Outcome, outcome, seconds, step } from "./metrics.js";
 import type { RestrictedAddressScreener } from "./screener.js";
 
 /**
@@ -477,9 +477,13 @@ export async function handle(
   } catch (err) {
     metrics.recordPaymentStep(RAIL, step.CHARGE, seconds(started));
     if (endpointUnreachable(err)) {
+      metrics.recordFailure(RAIL, step.CHARGE, failure.UNREACHABLE);
       log.error(`mpp charge failed: tempo endpoint unreachable: ${describe(err)}`);
       return ended(outcome.NETWORK_UNAVAILABLE, gatewayError());
     }
+    // The SDK throws one error for every refusal, so the rail knows the charge
+    // was declined and not why.
+    metrics.recordFailure(RAIL, step.CHARGE, failure.UNSPECIFIED);
     return ended(outcome.REFUSED, paymentRejected());
   }
   metrics.recordPaymentStep(RAIL, step.CHARGE, seconds(started));

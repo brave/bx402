@@ -262,6 +262,11 @@ describe("mpp", () => {
       metrics,
       `bx402_payments_total{rail="mpp",endpoint="${WEB_SEARCH_PATH}",outcome="network_unavailable"} 1`,
     );
+    // Nobody answered, so this one is ours and not the payer's.
+    await assertRecorded(
+      metrics,
+      'bx402_payment_failures_total{rail="mpp",step="charge",reason="unreachable"} 1',
+    );
   });
 
   it("an_unreachable_tempo_rpc_records_the_charge_it_attempted", async () => {
@@ -301,6 +306,11 @@ describe("mpp", () => {
     await assertRecorded(
       metrics,
       `bx402_payments_total{rail="mpp",endpoint="${WEB_SEARCH_PATH}",outcome="refused"} 1`,
+    );
+    // Declined, and the rail was told nothing about why.
+    await assertRecorded(
+      metrics,
+      'bx402_payment_failures_total{rail="mpp",step="charge",reason="unspecified"} 1',
     );
     await assertNotRecorded(metrics, 'outcome="network_unavailable"');
   });
