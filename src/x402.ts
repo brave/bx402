@@ -500,6 +500,7 @@ export async function handle(
 
   const decoded = decodePayment(headers, requested, client.enableBazaar);
   if (typeof decoded === "string") {
+    metrics.recordFailure(RAIL, step.DECODE, decoded);
     return ended(outcome.MALFORMED, paymentRejected(MALFORMED_PAYMENT));
   }
   const { payload, accepted, payer, claim } = decoded;

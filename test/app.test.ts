@@ -829,6 +829,10 @@ describe("app", () => {
 
     expect(response.status).toBe(402);
     await assertPaymentOutcome(metrics, "x402", "malformed");
+    await assertRecorded(
+      metrics,
+      'bx402_payment_failures_total{rail="x402",step="decode",reason="bad_nonce"} 1',
+    );
   });
 
   it("a_screened_payment_releases_its_claim", async () => {
