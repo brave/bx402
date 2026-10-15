@@ -439,6 +439,7 @@ export async function handle(
 
   const parsed = credential(headers);
   if (parsed === undefined) {
+    metrics.recordFailure(RAIL, step.DECODE, failure.UNDECODABLE);
     return ended(outcome.MALFORMED, paymentRejected());
   }
 

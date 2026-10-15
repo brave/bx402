@@ -963,6 +963,10 @@ describe("app", () => {
     });
     expect(first.status).toBe(402);
     await assertPaymentOutcome(malformed, "mpp", "malformed");
+    await assertRecorded(
+      malformed,
+      'bx402_payment_failures_total{rail="mpp",step="decode",reason="undecodable"} 1',
+    );
 
     const unsupported = new Metrics();
     const second = await (
