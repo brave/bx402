@@ -24,6 +24,9 @@ FROM_BLOCK=$(settlement_cursor)
 # The password is needed again here, to decrypt the keystore: without it purl
 # prompts and dies the same way. --output-format sets the response encoding,
 # where --output would write the response to a file of that name instead.
-PURL_PASSWORD=e2e-throwaway ./purl --output-format json "$URL" > response.txt 2> client.log
+pay() {
+  PURL_PASSWORD=e2e-throwaway ./purl --output-format json "$URL" > response.txt 2> client.log
+}
+pay_until_settled pay
 assert_search_body response.txt
 verify_settlement "$FROM_BLOCK"

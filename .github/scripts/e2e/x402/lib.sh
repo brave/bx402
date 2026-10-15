@@ -6,6 +6,8 @@
 #   settlement_cursor            the block to search from, captured before paying
 #   npm_client_version <package> prints the installed version of an npm client
 #   run_node_client <script.mjs> runs a node client leg against URL as PAYER_KEY
+#   pay_until_settled <cmd...>   runs a pay command, paying again while the
+#                                facilitator reports it could not settle
 #   assert_search_body <file>    asserts the captured response is a search result
 #   verify_settlement <block>    finds the USDC transfer that paid for the search
 #                                and prints its transaction hash
@@ -55,6 +57,25 @@ npm_client_version() {
 run_node_client() {
   cp "$(dirname "${BASH_SOURCE[0]}")/$1" .
   PAYER_KEY="$PAYER_KEY" URL="$URL" node "./$1" 2> client.log
+}
+
+# The public testnet facilitator pays gas from one shared wallet, so its
+# settlement transaction sometimes loses a nonce race with other users' traffic
+# or hits the public RPC's rate limit. That transaction never reaches the chain,
+# so paying again with a fresh authorization is safe.
+pay_until_settled() {
+  local attempt status
+  for attempt in 1 2 3; do
+    rm -f response.txt
+    status=0
+    "$@" || status=$?
+    grep -qs 'payment could not be settled' response.txt || return "$status"
+    if [ "$attempt" -lt 3 ]; then
+      echo "attempt $attempt: facilitator could not settle, paying again" >&2
+      sleep 10
+    fi
+  done
+  return "$status"
 }
 
 assert_search_body() {
