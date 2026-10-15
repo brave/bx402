@@ -8,7 +8,7 @@ import {
 } from "@x402/extensions/bazaar";
 import { afterEach, describe, expect, it } from "vitest";
 import { ENDPOINTS, findEndpoint } from "../src/endpoints.js";
-import { Metrics } from "../src/metrics.js";
+import { failure, Metrics } from "../src/metrics.js";
 import {
   accepts,
   challenge,
@@ -46,6 +46,15 @@ function paymentHeaders(payload: unknown): Headers {
   });
 }
 
+/** Decode a payment the test expects to read, failing with the reason when it cannot. */
+function decodeReadable(headers: Headers, requested: string, listed: boolean) {
+  const decoded = decodePayment(headers, requested, listed);
+  if (typeof decoded === "string") {
+    throw new Error(`the payment does not decode: ${decoded}`);
+  }
+  return decoded;
+}
+
 /** A well-formed eip3009 authorization, the least a decodable payment carries. */
 const AUTHORIZATION = {
   from: `0x${"AB".repeat(20)}`,
@@ -78,7 +87,7 @@ const RELAYED_URL = "https://bx402.example.com/res/v1/web/search";
 const RELAYED_DESCRIPTION = findEndpoint("/res/v1/web/search")?.description ?? "";
 
 /** The resource a decoded payment carries, whatever the payer echoed. */
-function relayedResource(decoded: { payload: PaymentPayload } | undefined):
+function relayedResource(decoded: { payload: PaymentPayload }):
   | {
       url?: string;
       description?: string;
@@ -87,9 +96,6 @@ function relayedResource(decoded: { payload: PaymentPayload } | undefined):
       iconUrl?: string;
     }
   | undefined {
-  if (decoded === undefined) {
-    throw new Error("the payment decodes");
-  }
   return (
     decoded.payload as {
       resource?: {
@@ -104,13 +110,10 @@ function relayedResource(decoded: { payload: PaymentPayload } | undefined):
 }
 
 /** The extensions a decoded payment carries, whatever the payer echoed. */
-function relayedExtensions(decoded: { payload: PaymentPayload } | undefined): {
+function relayedExtensions(decoded: { payload: PaymentPayload }): {
   bazaar?: { info?: unknown; routeTemplate?: unknown };
   mppx?: unknown;
 } {
-  if (decoded === undefined) {
-    throw new Error("the payment decodes");
-  }
   return (
     (
       decoded.payload as {
@@ -244,18 +247,18 @@ describe("x402", () => {
   it("decode_reads_the_offer_the_payer_accepted", () => {
     const entries = offersFor(true, "/res/v1/web/search");
 
-    const decoded = decodePayment(
+    const decoded = decodeReadable(
       paymentHeaders({ accepted: entries[0], payload: { authorization: AUTHORIZATION } }),
       REQUESTED,
       true,
     );
-    expect(decoded?.accepted).toEqual(entries[0]);
-    expect(decoded?.payer).toBe(AUTHORIZATION.from.toLowerCase());
+    expect(decoded.accepted).toEqual(entries[0]);
+    expect(decoded.payer).toBe(AUTHORIZATION.from.toLowerCase());
 
     // A payload naming no offer at all cannot be read.
     expect(
       decodePayment(paymentHeaders({ payload: { authorization: AUTHORIZATION } }), REQUESTED, true),
-    ).toBe(undefined);
+    ).toBe(failure.MISSING_OFFER);
   });
 
   it("a_payment_without_a_full_authorization_cannot_be_read", () => {
@@ -266,12 +269,40 @@ describe("x402", () => {
     const decode = (payload: unknown) =>
       decodePayment(paymentHeaders({ accepted: entries[0], payload }), REQUESTED, true);
 
-    expect(decode({})).toBeUndefined();
-    expect(decode({ authorization: { from: AUTHORIZATION.from } })).toBeUndefined();
-    expect(decode({ authorization: { nonce: AUTHORIZATION.nonce } })).toBeUndefined();
+    expect(decode(undefined)).toBe(failure.MISSING_AUTHORIZATION);
+    expect(decode({})).toBe(failure.MISSING_AUTHORIZATION);
+    expect(decode({ authorization: { from: AUTHORIZATION.from } })).toBe(failure.BAD_NONCE);
+    expect(decode({ authorization: { nonce: AUTHORIZATION.nonce } })).toBe(failure.BAD_PAYER);
     expect(
       decode({ authorization: { from: AUTHORIZATION.from, nonce: `0x${"cd".repeat(4096)}` } }),
-    ).toBeUndefined();
+    ).toBe(failure.BAD_NONCE);
+  });
+
+  it("a_header_that_is_not_base64_json_cannot_be_read", () => {
+    const decode = (header: string) =>
+      decodePayment(new Headers({ "payment-signature": header }), REQUESTED, true);
+
+    expect(decode("not base64 json")).toBe(failure.UNDECODABLE);
+    expect(decode(Buffer.from('"a string"').toString("base64"))).toBe(failure.UNDECODABLE);
+    expect(decodePayment(new Headers(), REQUESTED, true)).toBe(failure.UNDECODABLE);
+  });
+
+  it("an_x402_v1_payload_names_no_offer_whatever_version_it_claims", () => {
+    // The v1 shape names its scheme and network at the top level, where v2
+    // carries the accepted offer instead.
+    for (const x402Version of [1, 2]) {
+      const decoded = decodePayment(
+        paymentHeaders({
+          x402Version,
+          scheme: "exact",
+          network: "eip155:8453",
+          payload: { authorization: AUTHORIZATION, signature: "0x00" },
+        }),
+        REQUESTED,
+        true,
+      );
+      expect(decoded, `x402Version ${x402Version}`).toBe(failure.MISSING_OFFER);
+    }
   });
 
   it("the_claim_key_is_the_nonce_scoped_by_the_payer", () => {
@@ -279,21 +310,21 @@ describe("x402", () => {
 
     // The same payment under two encodings: key order differs, so the header
     // bytes differ, but both name one authorization.
-    const first = decodePayment(
+    const first = decodeReadable(
       paymentHeaders({ accepted: entries[0], payload: { authorization: AUTHORIZATION } }),
       REQUESTED,
       true,
     );
-    const second = decodePayment(
+    const second = decodeReadable(
       paymentHeaders({ payload: { authorization: AUTHORIZATION }, accepted: entries[0] }),
       REQUESTED,
       true,
     );
 
-    expect(first?.claim.key).toBe(
+    expect(first.claim.key).toBe(
       `${AUTHORIZATION.from.toLowerCase()}:${AUTHORIZATION.nonce.toLowerCase()}`,
     );
-    expect(second?.claim.key).toBe(first?.claim.key);
+    expect(second.claim.key).toBe(first.claim.key);
   });
 
   it("the_claim_window_is_the_offer_timeout_not_the_clients_deadline", () => {
@@ -301,7 +332,7 @@ describe("x402", () => {
     // duplicates, so a deadline just ahead does not move the expiry.
     const entries = offersFor(true, "/res/v1/web/search");
     const validBefore = String(Math.floor(Date.now() / 1000) + 3);
-    const decoded = decodePayment(
+    const decoded = decodeReadable(
       paymentHeaders({
         accepted: entries[0],
         payload: { authorization: { ...AUTHORIZATION, validBefore } },
@@ -311,8 +342,8 @@ describe("x402", () => {
     );
 
     const window = (entries[0]?.maxTimeoutSeconds ?? 0) * 1000;
-    expect(decoded?.claim.expires).toBeGreaterThan(Date.now() + window - 5_000);
-    expect(decoded?.claim.expires).toBeLessThanOrEqual(Date.now() + window);
+    expect(decoded.claim.expires).toBeGreaterThan(Date.now() + window - 5_000);
+    expect(decoded.claim.expires).toBeLessThanOrEqual(Date.now() + window);
   });
 
   it("decode_relays_the_resource_this_service_served_not_the_payers_claim", () => {
@@ -320,7 +351,7 @@ describe("x402", () => {
     // and the payer does not get to choose that.
     const entries = offersFor(true, "/res/v1/web/search");
     const resource = relayedResource(
-      decodePayment(
+      decodeReadable(
         paymentHeaders({
           x402Version: 2,
           resource: {
@@ -349,7 +380,7 @@ describe("x402", () => {
     // depend on the payer having echoed one.
     const entries = offersFor(true, "/res/v1/web/search");
     const resource = relayedResource(
-      decodePayment(
+      decodeReadable(
         paymentHeaders({ accepted: entries[0], payload: { authorization: AUTHORIZATION } }),
         REQUESTED,
         true,
@@ -365,7 +396,7 @@ describe("x402", () => {
     // unparseable URL breaks it, so resource and declaration both drop.
     const entries = offersFor(true, "/res/v1/web/search");
     const decodeFor = (requested: string) =>
-      decodePayment(
+      decodeReadable(
         paymentHeaders({
           x402Version: 2,
           resource: { url: "https://bx402.example.com/res/v1/web/search?q=private" },
@@ -387,7 +418,7 @@ describe("x402", () => {
       const decoded = decodeFor(requested);
       expect(relayedResource(decoded), requested).toBeUndefined();
       expect(relayedExtensions(decoded).bazaar, requested).toBeUndefined();
-      expect(decoded?.accepted).toEqual(entries[0]);
+      expect(decoded.accepted).toEqual(entries[0]);
     }
   });
 
@@ -395,7 +426,7 @@ describe("x402", () => {
     // A payer's `routeTemplate` would steer the listing away from the path it paid
     // for, so ours goes out whatever arrived.
     const entries = offersFor(true, "/res/v1/web/search");
-    const decoded = decodePayment(
+    const decoded = decodeReadable(
       paymentHeaders({
         x402Version: 2,
         accepted: entries[0],
@@ -465,13 +496,12 @@ describe("x402", () => {
     const entries = offersFor(true, "/res/v1/web/search");
     const discounted = { ...entries[0], amount: "1" };
 
-    const decoded = decodePayment(
+    const decoded = decodeReadable(
       paymentHeaders({ accepted: discounted, payload: { authorization: AUTHORIZATION } }),
       REQUESTED,
       true,
     );
-    expect(decoded).toBeDefined();
-    expect(entries).not.toContainEqual(decoded?.accepted);
+    expect(entries).not.toContainEqual(decoded.accepted);
   });
 
   it("cdp_credentials_pair_only_with_the_cdp_facilitator", () => {
@@ -634,7 +664,7 @@ describe("x402", () => {
     // The mppx route binding is not a listing, and clients still need it to sign.
     expect(extensions.mppx).toBeDefined();
 
-    const decoded = decodePayment(
+    const decoded = decodeReadable(
       paymentHeaders({
         x402Version: 2,
         resource: { url: REQUESTED },
@@ -658,7 +688,7 @@ describe("x402", () => {
       const declaration = declarationFor(requested);
       expect(validateDiscoveryExtension(declaration as never), path).toEqual({ valid: true });
 
-      const decoded = decodePayment(
+      const decoded = decodeReadable(
         paymentHeaders({
           x402Version: 2,
           accepted: offersFor(true, path)[0],
@@ -667,9 +697,6 @@ describe("x402", () => {
         requested,
         true,
       );
-      if (decoded === undefined) {
-        throw new Error("the payment decodes");
-      }
       const listed = extractDiscoveryInfo(decoded.payload, decoded.accepted);
       expect(listed?.resourceUrl, path).toBe(`https://bx402.example.com${path}`);
       expect(listed?.discoveryInfo, path).toEqual((declaration as { info: unknown }).info);

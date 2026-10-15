@@ -97,10 +97,7 @@ const MAX_TIMEOUT_SECONDS = 300;
 /** The error line every cold `402` envelope carries. */
 const PAYMENT_REQUIRED = "Payment required";
 
-/**
- * Shared message for a payment we could not read at all, whether the header, its
- * base64, its JSON, or the offer it names is unusable.
- */
+/** Shared message for any payment `decodePayment` cannot read, whatever part failed. */
 const MALFORMED_PAYMENT = "malformed x402 payment payload";
 
 /** Shared message for every refused payment, so refusals are indistinguishable. */
@@ -502,7 +499,7 @@ export async function handle(
   };
 
   const decoded = decodePayment(headers, requested, client.enableBazaar);
-  if (decoded === undefined) {
+  if (typeof decoded === "string") {
     return ended(outcome.MALFORMED, paymentRejected(MALFORMED_PAYMENT));
   }
   const { payload, accepted, payer, claim } = decoded;
@@ -671,8 +668,9 @@ const EIP3009_NONCE = /^0x[0-9a-fA-F]{64}$/;
  * payload, the offer the payer says it accepted, the payer to screen,
  * lowercased to the screener's canonical form (EVM addresses are
  * case-insensitive hex), and the replay claim the payment is deduplicated
- * under. `undefined` if the header is absent, not the base64 JSON required,
- * or the payload carries no well-formed eip3009 authorization.
+ * under. Otherwise the `failure` reason saying which part could not be read:
+ * the header is absent or not the base64 JSON required, it names no accepted
+ * offer, or it carries no well-formed eip3009 authorization.
  *
  * Every offer we advertise is an eip3009 transfer, so a payload without a
  * plausible `authorization` (a permit2 shape, say) is malformed for all of
@@ -697,38 +695,36 @@ export function decodePayment(
       payer: string;
       claim: { key: string; expires: number };
     }
-  | undefined {
+  | Failure {
   const header = headers.get(V2_PAYMENT_HEADER);
   if (header === null) {
-    return undefined;
+    return failure.UNDECODABLE;
   }
   let payload: unknown;
   try {
     payload = JSON.parse(Buffer.from(header, "base64").toString("utf8"));
   } catch {
-    return undefined;
+    return failure.UNDECODABLE;
   }
   if (!isRecord(payload)) {
-    return undefined;
+    return failure.UNDECODABLE;
   }
+  // An x402 v1 payload names its scheme and network at the top level instead,
+  // so it lands here whatever version it claims.
   const { accepted } = payload;
   if (!isRecord(accepted)) {
-    return undefined;
+    return failure.MISSING_OFFER;
   }
-  const scheme = payload.payload;
-  if (!isRecord(scheme)) {
-    return undefined;
-  }
-  const { authorization } = scheme;
+  const authorization = isRecord(payload.payload) ? payload.payload.authorization : undefined;
   if (!isRecord(authorization)) {
-    return undefined;
+    return failure.MISSING_AUTHORIZATION;
   }
   const { from, nonce } = authorization;
   if (typeof from !== "string" || !EVM_ADDRESS.test(from)) {
-    return undefined;
+    return failure.BAD_PAYER;
   }
   if (typeof nonce !== "string" || !EIP3009_NONCE.test(nonce)) {
-    return undefined;
+    return failure.BAD_NONCE;
   }
   const payer = from.toLowerCase();
   const echoed = isRecord(payload.extensions) ? payload.extensions : undefined;
