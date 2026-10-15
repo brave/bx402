@@ -173,6 +173,10 @@ export type Screening = (typeof screening)[keyof typeof screening];
  * was never there, whether the proof had already been spent, or whether nobody
  * answered us at all. Each rail maps what it was told onto these, so one
  * vocabulary covers a facilitator, a chain, and whatever comes next.
+ *
+ * A proof we could not read at all fails before anyone is asked, so the
+ * reasons from `UNDECODABLE` on say which part of it was missing or out of
+ * shape. That is the payer's client to fix, and these tell its author what.
  */
 export const failure = {
   /** Nobody answered: a timeout, a refused connection, an unreadable reply. */
@@ -191,16 +195,29 @@ export const failure = {
   UNSPECIFIED: "unspecified",
   /** A reason we have no bucket for, so one caller cannot mint a series. */
   OTHER: "other",
+  /** The proof is not in the encoding the rail reads, so nothing in it could be read. */
+  UNDECODABLE: "undecodable",
+  /** The proof does not name the offer it accepted. */
+  MISSING_OFFER: "missing_offer",
+  /** The proof carries no authorization to move the money. */
+  MISSING_AUTHORIZATION: "missing_authorization",
+  /** The payer the proof names is not an address. */
+  BAD_PAYER: "bad_payer",
+  /** The proof's nonce is not one a transfer could use. */
+  BAD_NONCE: "bad_nonce",
 } as const;
 
 /** One of the `failure` reasons. */
 export type Failure = (typeof failure)[keyof typeof failure];
 
 /**
- * The steps of a payment worth timing separately. Which steps a rail reports
- * depends on whether it can check a payment without moving money.
+ * The steps of a payment worth telling apart. Which steps a rail times depends
+ * on whether it can check a payment without moving money. Reading the proof is
+ * counted when it fails but never timed, since it takes no time worth showing.
  */
 export const step = {
+  /** Reading the proof, before anything is checked. */
+  DECODE: "decode",
   /** Checking a payment without moving money. */
   VERIFY: "verify",
   /** Moving the money. */
