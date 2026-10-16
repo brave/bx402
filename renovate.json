@@ -2,5 +2,11 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "local>brave-experiments/renovate-config"
+  ],
+  "packageRules": [
+    {
+      "matchPackageNames": ["@x402/*"],
+      "groupName": "x402"
+    }
   ]
 }
