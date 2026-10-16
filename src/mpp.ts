@@ -16,11 +16,13 @@ import {
   formatUnits,
   HttpRequestError,
   parseUnits,
+  type ResolvedToken,
   SocketClosedError,
   TimeoutError,
 } from "viem";
 import { createClient, http } from "viem/tempo";
 import { tempo as tempoMainnet, tempoModerato } from "viem/tempo/chains";
+import { pathusd } from "viem/tokens";
 import type { MppConfig } from "./config.js";
 import type { Offer } from "./discovery.js";
 import { ENDPOINTS, findEndpoint } from "./endpoints.js";
@@ -78,14 +80,10 @@ const REALM = "bx402";
 const PAY_TO_EVM = "0xbd9420A98a7Bd6B89765e5715e169481602D9c3d";
 
 /**
- * pathUSD, the stablecoin every charge is priced in. It is a TIP-20 precompile
- * at a fixed address, the same on mainnet and on the testnet, so there is no
- * per-network token to configure. Naming it explicitly matters: left unset the
- * SDK offers other stablecoins first.
+ * How many decimals every accepted token carries, the scale every amount is
+ * written in. The catalog prices in base units of this scale, and `client`
+ * refuses to start on a token with any other.
  */
-const PATH_USD = "0x20c0000000000000000000000000000000000000";
-
-/** How many decimals pathUSD carries, the scale every amount is written in. */
 const CURRENCY_DECIMALS = 6;
 
 /** The leading byte that marks a serialized Tempo transaction. */
@@ -94,16 +92,35 @@ const TEMPO_TX_TYPE = "0x76";
 /** How long to wait for the endpoint to report its chain before giving up. */
 const CHAIN_QUERY_TIMEOUT_MS = 5_000;
 
+/** A Tempo network this rail serves, and the stablecoins it accepts there. */
+interface Network {
+  chain: Chain;
+  testnet: boolean;
+  /** In the order they are offered. */
+  tokens: ResolvedToken[];
+}
+
+/** The stablecoins accepted on `chainId`, in the order they are offered. */
+function acceptedTokens(chainId: typeof tempoMainnet.id | typeof tempoModerato.id) {
+  return [pathusd(chainId)];
+}
+
 /**
  * The Tempo networks this rail serves, keyed by the chain id an endpoint reports.
  * The definitions come from viem rather than literals here, so they cannot drift
- * from the chains the SDK talks to. Whether each is a testnet is stated rather
- * than read off the chain, so a definition that stops carrying the flag cannot
- * quietly turn a testnet into money. Any other chain is refused.
+ * from the chains and tokens the SDK talks to. Whether each is a testnet is
+ * stated rather than read off the chain, so a definition that stops carrying the
+ * flag cannot quietly turn a testnet into money. Any other chain is refused.
  */
-const NETWORKS = new Map<number, { chain: Chain; testnet: boolean }>([
-  [tempoMainnet.id, { chain: tempoMainnet, testnet: false }],
-  [tempoModerato.id, { chain: tempoModerato, testnet: true }],
+const NETWORKS = new Map<number, Network>([
+  [
+    tempoMainnet.id,
+    { chain: tempoMainnet, testnet: false, tokens: acceptedTokens(tempoMainnet.id) },
+  ],
+  [
+    tempoModerato.id,
+    { chain: tempoModerato, testnet: true, tokens: acceptedTokens(tempoModerato.id) },
+  ],
 ]);
 
 /** Whether the request carries an MPP credential. */
@@ -112,17 +129,14 @@ export function hasCredential(headers: Headers): boolean {
 }
 
 /**
- * One endpoint's charge, in the form the SDK takes when a challenge is minted.
- *
- * Every field is stated per challenge rather than left to the method's defaults.
- * A chain id on the method config is ignored and silently falls back to mainnet,
- * which would advertise a chain we are not talking to.
+ * One endpoint's charge in every accepted token, in the form the SDK takes. A
+ * challenge adds the token's address as its `currency`. Verification leaves it
+ * out, so the SDK picks its method for the token the challenge named.
  */
 export interface Charge {
   /** Price as a decimal amount of the currency, which `decimals` scales. */
   amount: string;
   chainId: number;
-  currency: string;
   decimals: number;
   recipient: string;
 }
@@ -134,11 +148,13 @@ export interface Charge {
 type Handler = ReturnType<typeof buildHandler>;
 
 /**
- * The MPP handler and the charge for each paid path, wrapped so the rest of the
- * service names this module's type rather than the SDK's.
+ * The MPP handler, the network it settles on, and the charge for each paid
+ * path, wrapped so the rest of the service names this module's type rather than
+ * the SDK's.
  */
 export interface Client {
   handler: Handler;
+  network: Network;
   /**
    * The charge per paid path, built once at startup. A path's challenge
    * advertises its own charge and a credential is verified against that same
@@ -166,13 +182,19 @@ export async function client(rail: MppConfig, allowTestnet: boolean): Promise<Cl
       `MPP_RPC_URL: chain ${chainId} is a testnet; set ALLOW_TESTNET=true to accept it`,
     );
   }
+  const misscaled = network.tokens.find((accepted) => accepted.decimals !== CURRENCY_DECIMALS);
+  if (misscaled !== undefined) {
+    throw AppError.invalidConfig(
+      `MPP: ${misscaled.symbol} carries ${misscaled.decimals} decimals, not ${CURRENCY_DECIMALS}`,
+    );
+  }
   let handler: Handler;
   try {
-    handler = buildHandler(rail, network.chain);
+    handler = buildHandler(rail, network);
   } catch (err) {
     throw AppError.invalidConfig(`MPP: ${describe(err)}`);
   }
-  return { handler, charges: charges(chainId) };
+  return { handler, network, charges: charges(chainId) };
 }
 
 /**
@@ -195,8 +217,15 @@ export async function challenge(
     return undefined;
   }
   try {
-    const minted = await client.handler.challenge.tempo.charge(charge);
-    return { name: CHALLENGE_HEADER, value: Challenge.serialize(minted) };
+    // One challenge per token in a single header, comma separated as HTTP
+    // allows for several challenges, which is also how a header set twice
+    // reaches the wire.
+    const minted = await Promise.all(
+      client.network.tokens.map((accepted) =>
+        client.handler.challenge.tempo.charge({ ...charge, currency: accepted.address }),
+      ),
+    );
+    return { name: CHALLENGE_HEADER, value: minted.map(Challenge.serialize).join(", ") };
   } catch {
     log.error("mpp challenge could not be built");
     return undefined;
@@ -208,16 +237,21 @@ export async function challenge(
  * client per credential, and every credential this service accepts names the one
  * chain the endpoint reported, so the same client answers them all.
  *
- * The method accepts pathUSD on that chain and nothing else. Left to its
- * defaults, the SDK builds one charge method per stablecoin it knows, and then
- * every credential matches more than one of them and is refused.
+ * One method per accepted token on that chain. Left to its defaults, the SDK
+ * would accept stablecoins this service never offers.
  */
-function buildHandler(rail: MppConfig, chain: Chain) {
-  const rpc = createClient({ chain, transport: http(rail.rpcUrl) });
+function buildHandler(rail: MppConfig, network: Network) {
+  const rpc = createClient({ chain: network.chain, transport: http(rail.rpcUrl) });
   return Mppx.create({
     realm: REALM,
     secretKey: rail.secretKey,
-    methods: [tempo.charge({ getClient: () => rpc, chainId: chain.id, currencies: [PATH_USD] })],
+    methods: [
+      tempo.charge({
+        getClient: () => rpc,
+        chainId: network.chain.id,
+        currencies: network.tokens.map((accepted) => accepted.address),
+      }),
+    ],
   });
 }
 
@@ -236,7 +270,6 @@ function charges(chainId: number): Map<string, Charge> {
       {
         amount: formatUnits(BigInt(endpoint.priceBaseUnits), CURRENCY_DECIMALS),
         chainId,
-        currency: PATH_USD,
         decimals: CURRENCY_DECIMALS,
         recipient: PAY_TO_EVM,
       },
@@ -244,51 +277,42 @@ function charges(chainId: number): Map<string, Charge> {
   );
 }
 
+/** Whether the chain this rail settles on is a testnet. */
+export function servesTestnet(client: Client): boolean {
+  return client.network.testnet;
+}
+
 /**
  * The offers this rail states in the discovery document for `path`, read off
  * the `charges` table so discovery can never disagree with the challenge.
- * Empty for a path that is not sold, one offer otherwise, since the rail
- * charges on a single chain in a single token.
+ * Empty for a path that is not sold, one offer per accepted token otherwise.
  *
  * The charge states a decimal amount while a discovery offer states base
  * units, so the conversion runs back through `parseUnits` on the very charge
  * the challenge advertises rather than reading the catalog a second time.
  */
-/** Whether the chain this rail settles on is a testnet. */
-export function servesTestnet(client: Client): boolean {
-  return [...client.charges.values()].some((charge) => NETWORKS.get(charge.chainId)?.testnet);
-}
-
 export function offers(client: Client, path: string): Offer[] {
   const charge = client.charges.get(path);
   if (charge === undefined) {
     return [];
   }
-  return [
-    {
-      intent: "charge",
-      method: TEMPO_METHOD,
-      amount: String(parseUnits(charge.amount, charge.decimals)),
-      currency: charge.currency,
-      description: describeOffer(charge),
-    },
-  ];
+  return client.network.tokens.map((accepted) => ({
+    intent: "charge",
+    method: TEMPO_METHOD,
+    amount: String(parseUnits(charge.amount, charge.decimals)),
+    currency: accepted.address,
+    description: describeOffer(client.network, accepted),
+  }));
 }
 
 /**
  * The offer's token and chain in words. The discovery offer object has no
  * network field, so this sentence is the only place a reader learns which
  * Tempo network a deployment settles on. viem's chain names mark the testnet
- * themselves ("Tempo Testnet (Moderato)"). The fallback cannot fire for
- * charges built by `charges`, but an unknown chain id is still named rather
- * than dropped or thrown on.
+ * themselves ("Tempo Testnet (Moderato)").
  */
-function describeOffer(charge: Charge): string {
-  const network = NETWORKS.get(charge.chainId);
-  if (network === undefined) {
-    return `pathUSD on Tempo chain ${charge.chainId}`;
-  }
-  return `pathUSD on ${network.chain.name}`;
+function describeOffer(network: Network, accepted: ResolvedToken): string {
+  return `${accepted.symbol} on ${network.chain.name}`;
 }
 
 /** The chain id the RPC endpoint reports for itself (`eth_chainId`). */
@@ -467,8 +491,11 @@ export async function handle(
     }
   }
 
+  // The token is whichever one the answered challenge named. The challenge is
+  // signed by us, so the payer cannot swap in a token we never offered.
   const charge = client.charges.get(endpoint);
-  if (charge === undefined) {
+  const paidIn = tokenFor(client, parsed);
+  if (charge === undefined || paidIn === undefined) {
     return ended(outcome.NO_OFFER, paymentRejected());
   }
 
@@ -477,7 +504,10 @@ export async function handle(
   let receipt: Receipt.Receipt;
   try {
     // Spread rather than passed straight through, because the SDK takes a plain
-    // record here and an interface carries no index signature.
+    // record here and an interface carries no index signature. The charge names
+    // no currency, so the SDK settles with its method for the token the
+    // challenge named; a currency here would stand in for every method's and
+    // make them all match, which it refuses.
     receipt = await client.handler.broadcastCredential(parsed, { request: { ...charge } });
   } catch (err) {
     metrics.recordPaymentStep(RAIL, step.CHARGE, seconds(started));
@@ -501,9 +531,27 @@ export async function handle(
   // advertised rather than anything the payer said.
   const sold = findEndpoint(endpoint);
   if (sold !== undefined) {
-    metrics.recordCharge(RAIL, endpoint, describeOffer(charge), sold.priceBaseUnits);
+    metrics.recordCharge(
+      RAIL,
+      endpoint,
+      describeOffer(client.network, paidIn),
+      sold.priceBaseUnits,
+    );
   }
   return attachReceipt(await runSearch(), receipt);
+}
+
+/**
+ * The accepted token the credential's challenge named, or `undefined` when it
+ * names one this rail does not offer.
+ */
+function tokenFor(client: Client, parsed: Credential.Credential): ResolvedToken | undefined {
+  const named = parsed.challenge.request.currency;
+  if (typeof named !== "string") {
+    return undefined;
+  }
+  const wanted = named.toLowerCase();
+  return client.network.tokens.find((accepted) => accepted.address.toLowerCase() === wanted);
 }
 
 /**
