@@ -3,7 +3,7 @@ import { HttpRequestError } from "viem";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Config, MppConfig } from "../src/config.js";
 import { Metrics } from "../src/metrics.js";
-import type { Client } from "../src/mpp.js";
+import type { Charge, Client } from "../src/mpp.js";
 import {
   challenge,
   client,
@@ -25,6 +25,16 @@ import {
 /** Tempo mainnet and the Moderato testnet, the two chains this rail serves. */
 const MAINNET = 4217;
 const MODERATO = 42431;
+
+/**
+ * The tokens each chain accepts, in offer order, written out here so the table
+ * in src is checked rather than copied.
+ */
+const PATH_USD = { address: "0x20c0000000000000000000000000000000000000", symbol: "pathUSD" };
+const TOKENS = new Map<number, { address: string; symbol: string }[]>([
+  [MAINNET, [PATH_USD]],
+  [MODERATO, [PATH_USD]],
+]);
 
 /** The path every test that needs one paid endpoint uses. */
 const WEB_SEARCH_PATH = "/res/v1/web/search";
@@ -60,6 +70,18 @@ function echo(): Challenge.Challenge {
   } as Challenge.Challenge;
 }
 
+/** Headers carrying a credential that answers `minted` with a signed transaction. */
+function answering(minted: Challenge.Challenge): Headers {
+  return new Headers({
+    authorization: Credential.serialize(
+      Credential.from({
+        challenge: minted,
+        payload: { type: "transaction", signature: forgedTransaction().transaction },
+      }),
+    ),
+  });
+}
+
 afterEach(() => {
   restoreNetwork();
 });
@@ -87,23 +109,29 @@ describe("mpp", () => {
     const advertised = await challenge(built, WEB_SEARCH_PATH);
     expect(advertised?.name).toBe("www-authenticate");
 
-    const parsed = Challenge.deserialize(advertised?.value as string);
-    expect(parsed.realm).toBe("bx402");
-    expect(parsed.method).toBe("tempo");
-    expect(parsed.intent).toBe("charge");
-    // Signed and time-boxed, so only a credential answering this challenge pays.
-    expect(parsed.id).not.toBe("");
-    expect(parsed.expires).toBeDefined();
+    // One challenge per accepted token, in the order they are offered.
+    const parsed = Challenge.deserializeList(advertised?.value as string);
+    for (const one of parsed) {
+      expect(one.realm).toBe("bx402");
+      expect(one.method).toBe("tempo");
+      expect(one.intent).toBe("charge");
+      // Signed and time-boxed, so only a credential answering this challenge pays.
+      expect(one.id).not.toBe("");
+      expect(one.expires).toBeDefined();
+    }
+    expect(new Set(parsed.map((one) => one.id)).size).toBe(parsed.length);
 
-    // The charge a credential is verified against, byte for byte. `amount` is in
+    // The charges a credential is verified against, byte for byte. `amount` is in
     // base units here while the charge table holds the decimal the SDK scales
     // from, so this is what pins the price that actually reaches a payer.
-    expect(parsed.request).toEqual({
-      amount: "5000",
-      currency: "0x20c0000000000000000000000000000000000000",
-      methodDetails: { chainId: MODERATO },
-      recipient: "0xbd9420A98a7Bd6B89765e5715e169481602D9c3d",
-    });
+    expect(parsed.map((one) => one.request)).toEqual(
+      TOKENS.get(MODERATO)?.map(({ address }) => ({
+        amount: "5000",
+        currency: address,
+        methodDetails: { chainId: MODERATO },
+        recipient: "0xbd9420A98a7Bd6B89765e5715e169481602D9c3d",
+      })),
+    );
   });
 
   it("challenge_needs_a_charge_for_the_path", async () => {
@@ -114,13 +142,10 @@ describe("mpp", () => {
   it("the_charge_follows_the_chain_and_pins_the_price", async () => {
     for (const chain of [MODERATO, MAINNET]) {
       const built = await clientOn(testConfig(), chain);
-      const charge = built.charges.get(WEB_SEARCH_PATH);
-      // pathUSD on both chains, proving the SDK's mainnet USDC default is
-      // overridden, and the recipient is our treasury either way.
-      expect(charge, `${chain}`).toEqual({
+      // One price for every token the chain accepts, paid to our treasury.
+      expect(built.charges.get(WEB_SEARCH_PATH), `${chain}`).toEqual({
         amount: "0.005",
         chainId: chain,
-        currency: "0x20c0000000000000000000000000000000000000",
         decimals: 6,
         recipient: "0xbd9420A98a7Bd6B89765e5715e169481602D9c3d",
       });
@@ -129,44 +154,78 @@ describe("mpp", () => {
     await expect(clientOn(testConfig(), 1)).rejects.toThrow("unsupported Tempo chain 1");
   });
 
-  it("a_credential_for_our_challenge_reaches_the_transfer_check", async () => {
+  it("a_credential_for_any_of_our_challenges_reaches_the_transfer_check", async () => {
     for (const chain of [MODERATO, MAINNET]) {
       const built = await clientOn(testConfig(), chain);
       const advertised = await challenge(built, WEB_SEARCH_PATH);
-      const parsed = Credential.from({
-        challenge: Challenge.deserialize(advertised?.value as string),
-        payload: { type: "transaction", signature: forgedTransaction().transaction },
-      });
+      const minted = Challenge.deserializeList(advertised?.value as string);
+      expect(minted.map((one) => one.request.currency)).toEqual(
+        TOKENS.get(chain)?.map(({ address }) => address),
+      );
       const charge = built.charges.get(WEB_SEARCH_PATH);
-      // The real SDK handler, not a stand-in. The forged transaction pays no one,
-      // so the charge fails, but only once the SDK has matched the credential to
-      // our one method and gone looking for the transfer in it.
-      await expect(
-        built.handler.broadcastCredential(parsed, { request: { ...charge } }),
-        `${chain}`,
-      ).rejects.toThrow("no matching payment call found");
+      for (const one of minted) {
+        const parsed = Credential.from({
+          challenge: one,
+          payload: { type: "transaction", signature: forgedTransaction().transaction },
+        });
+        // The real SDK handler, given the request exactly as `handle` gives it.
+        // The forged transaction pays no one, so the charge fails, but only once
+        // the SDK has matched the credential to exactly one method and gone
+        // looking for the transfer.
+        await expect(
+          built.handler.broadcastCredential(parsed, { request: { ...charge } }),
+          `${chain} ${one.request.currency}`,
+        ).rejects.toThrow("no matching payment call found");
+      }
       restoreNetwork();
     }
+  });
+
+  it("a_credential_in_a_token_we_do_not_offer_is_refused_before_any_charge", async () => {
+    const built = await clientOn(testConfig(), MODERATO);
+    // Signed by us, so it passes every check except the token being one we sell.
+    const minted = await built.handler.challenge.tempo.charge({
+      ...(built.charges.get(WEB_SEARCH_PATH) as Charge),
+      currency: `0x${"77".repeat(20)}`,
+    });
+    const metrics = new Metrics();
+    const response = await handle(
+      built,
+      undefined,
+      metrics,
+      WEB_SEARCH_PATH,
+      answering(minted),
+      () => Promise.reject(new Error("the search must never run")),
+    );
+
+    expect(response.status).toBe(402);
+    await assertRecorded(
+      metrics,
+      `bx402_payments_total{rail="mpp",endpoint="${WEB_SEARCH_PATH}",outcome="no_offer"} 1`,
+    );
+    await assertNotRecorded(metrics, 'step="charge"');
   });
 
   it("discovery_offers_restate_the_charge_in_base_units", async () => {
     const built = await clientOn(testConfig(), MODERATO);
     // The charge behind this offer reads "0.005"; the offer states base units.
-    expect(offers(built, WEB_SEARCH_PATH)).toEqual([
-      {
+    expect(offers(built, WEB_SEARCH_PATH)).toEqual(
+      TOKENS.get(MODERATO)?.map(({ address, symbol }) => ({
         intent: "charge",
         method: "tempo",
         amount: "5000",
-        currency: "0x20c0000000000000000000000000000000000000",
-        description: "pathUSD on Tempo Testnet (Moderato)",
-      },
-    ]);
+        currency: address,
+        description: `${symbol} on Tempo Testnet (Moderato)`,
+      })),
+    );
   });
 
   it("discovery_offers_name_the_chain_the_deployment_settles_on", async () => {
     // A moderato deployment must not read as mainnet, or the reverse.
     const built = await clientOn(testConfig(), MAINNET);
-    expect(offers(built, WEB_SEARCH_PATH)[0]?.description).toBe("pathUSD on Tempo Mainnet");
+    expect(offers(built, WEB_SEARCH_PATH).map((offer) => offer.description)).toEqual(
+      TOKENS.get(MAINNET)?.map(({ symbol }) => `${symbol} on Tempo Mainnet`),
+    );
   });
 
   it("discovery_offers_are_empty_for_a_path_that_is_not_sold", async () => {
@@ -246,20 +305,15 @@ describe("mpp", () => {
     };
   }
 
-  /** Headers carrying a credential that parses and pays with a signed transaction. */
+  /**
+   * Headers carrying a credential that answers the first challenge we advertise,
+   * the first token offered, with a signed transaction.
+   */
   async function payingHeaders(): Promise<Headers> {
-    const { transaction } = forgedTransaction();
     const built = await clientOn(testConfig(), MODERATO);
     const advertised = await challenge(built, WEB_SEARCH_PATH);
-    const minted = Challenge.deserialize(advertised?.value as string);
-    return new Headers({
-      authorization: Credential.serialize(
-        Credential.from({
-          challenge: minted,
-          payload: { type: "transaction", signature: transaction },
-        }),
-      ),
-    });
+    const [first] = Challenge.deserializeList(advertised?.value as string);
+    return answering(first as Challenge.Challenge);
   }
 
   it("mpp_unreachable_tempo_rpc_is_a_gateway_error", async () => {
@@ -396,7 +450,8 @@ describe("mpp", () => {
       metrics,
       `bx402_payments_total{rail="mpp",endpoint="${WEB_SEARCH_PATH}",outcome="settled"} 1`,
     );
-    // What we count as earned is what we advertised, never anything the payer said.
+    // What we count as earned is what we advertised, never anything the payer
+    // said, in the token the answered challenge named (the first one offered).
     await assertRecorded(
       metrics,
       `bx402_charged_base_units_total{rail="mpp",endpoint="${WEB_SEARCH_PATH}",asset="pathUSD on Tempo Testnet (Moderato)"} 5000`,
