@@ -4,10 +4,10 @@
 #
 # `tempo request` signs with TEMPO_PRIVATE_KEY and pays only on the network it
 # is told to use, which defaults to mainnet. It refuses a challenge for any
-# other chain, so --network tempo-moderato matches the 42431 offer and routes
-# it to Moderato and pathUSD. Deliberately unpinned: the launcher
-# chooses both its own version and the request extension's, and prints its
-# version for every run's forensics.
+# other chain, so --network tempo-moderato matches the 42431 offers and routes
+# the payment to Moderato, in whichever offered token it picks. Deliberately
+# unpinned: the launcher chooses both its own version and the request
+# extension's, and prints its version for every run's forensics.
 set -euo pipefail
 . "$(dirname "$0")/lib.sh"
 
