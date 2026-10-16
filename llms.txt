@@ -24,12 +24,12 @@ first.
 
 {if mpp}
 {if mpptestnet}
-MPP rail, pathUSD on Tempo Moderato (testnet), with mppx (https://www.npmjs.com/package/mppx):
+MPP rail, OUSD, USDC.e or pathUSD on Tempo Moderato (testnet), with mppx (https://www.npmjs.com/package/mppx):
 
     npx mppx --network testnet -i '{origin}/res/v1/web/search?q=rust'
 {end}
 {if !mpptestnet}
-MPP rail, pathUSD on Tempo, with mppx (https://www.npmjs.com/package/mppx):
+MPP rail, OUSD, USDC.e or pathUSD on Tempo, with mppx (https://www.npmjs.com/package/mppx):
 
     npx mppx -i '{origin}/res/v1/web/search?q=rust'
 {end}
@@ -122,11 +122,13 @@ before choosing how to pay.
 {end}
 {if mpp}
 {if mpptestnet}
-- MPP settles in pathUSD on Tempo Moderato, chain 42431, a testnet.
+- MPP settles in OUSD, USDC.e or pathUSD on Tempo Moderato, chain 42431, a testnet.
 {end}
 {if !mpptestnet}
-- MPP settles in pathUSD on Tempo, chain 4217.
+- MPP settles in OUSD, USDC.e or pathUSD on Tempo, chain 4217.
 {end}
+  The `402` carries one challenge per token, in that order; mppx pays with one
+  you hold, and `--currency <token address>` picks one.
 {end}
 - x402 here is V2 only. A V1 `X-Payment` header is not recognized as a payment
   and gets the cold `402`.

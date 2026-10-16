@@ -38,8 +38,9 @@ export interface Endpoint {
   /**
    * Price for one request, in base units of the rail's currency.
    *
-   * One number serves both rails because USDC and pathUSD both carry 6 decimals,
-   * so `5_000` is $0.005 on either. A rail with a different scale would have to
+   * One number serves both rails because every token they accept (USDC on x402;
+   * OUSD, USDC.e and pathUSD on MPP) carries 6 decimals, so `5_000` is $0.005 in
+   * any of them. A rail with a different scale would have to
    * convert rather than read this directly.
    */
   readonly priceBaseUnits: number;

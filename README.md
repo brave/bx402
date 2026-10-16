@@ -8,8 +8,8 @@ Instead of an API key, each request carries a stablecoin micropayment, making th
 act as the credential.
 
 `bx402` is `bx` ([Brave Search CLI](https://github.com/brave/brave-search-cli)) + `402`, the HTTP *Payment Required* status.
-The `402` is the shared mechanism, not a rail, so **x402** (USDC
-on Base) and **MPP** (pathUSD on Tempo) are equally first-class.
+The `402` is the shared mechanism, not a rail, so **x402** (`USDC`
+on Base) and **MPP** (`OUSD`, `USDC.e` or `pathUSD` on Tempo) are equally first-class.
 
 | Spec | https://gist.github.com/onyb/a1d620ba1e6ded2577a2998f2ecb0f61 |
 -|-
@@ -41,10 +41,10 @@ instead, with `CDP_API_KEY_ID` and `CDP_API_KEY_SECRET` set beside it; the servi
 signs every facilitator call with that key and refuses to send credentials to any
 other facilitator host.
 
-| Party            | Owner | Requires          | Faucet                               |
-| ---------------- | ----- | ----------------- | ------------------------------------ |
-| Payer wallet     | Agent | Base Sepolia USDC | [Circle](https://faucet.circle.com/) |
-| Treasury address | Brave | nothing           | —                                    |
+| Party            | Owner | Requires            | Faucet                               |
+| ---------------- | ----- | ------------------- | ------------------------------------ |
+| Payer wallet     | Agent | Base Sepolia `USDC` | [Circle](https://faucet.circle.com/) |
+| Treasury address | Brave | nothing             | —                                    |
 
 1. Clone, then write your Brave Search API key to `.env`:
    ```sh
@@ -56,7 +56,7 @@ other facilitator host.
    ```sh
    docker compose up --build -d
    ```
-3. Create a payer wallet and fund it with USDC on Base Sepolia (`brew install stripe/purl/purl` if needed):
+3. Create a payer wallet and fund it with `USDC` on Base Sepolia (`brew install stripe/purl/purl` if needed):
    ```sh
    purl wallet add --type evm
    purl balance --network base-sepolia
@@ -67,7 +67,7 @@ other facilitator host.
    purl -v --max-amount 10000 'http://localhost:8080/res/v1/web/search?q=rust'
    ```
    The server returns the settled tx hash in the `PAYMENT-RESPONSE` response
-   header, but purl does not print it. Look the payer's USDC transfer up on
+   header, but purl does not print it. Look the payer's `USDC` transfer up on
    [sepolia.basescan.org](https://sepolia.basescan.org) instead.
 
 To settle through the facilitator in this repo instead of x402.org, give it a key
@@ -167,12 +167,15 @@ Brave logo.
 ## Networks
 
 Both rails charge the same price for the same endpoint, to the same treasury, in base
-units of a six decimal token. See [Endpoints](#endpoints) for the per-endpoint price.
+units of a six decimal token; every accepted token has six. See [Endpoints](#endpoints)
+for the per-endpoint price.
 
-| Rail | Mainnet             | Testnet                      | Asset   |
-| ---- | ------------------- | ---------------------------- | ------- |
-| x402 | Base, `eip155:8453` | Base Sepolia, `eip155:84532` | USDC    |
-| MPP  | Tempo, chain 4217   | Moderato, chain 42431        | pathUSD |
+| Rail | Network                 | Chain          | Assets |
+| ---- | ----------------------- | -------------- | ------ |
+| x402 | Base                    | `eip155:8453`  | [`USDC`](https://basescan.org/token/0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913) |
+| x402 | Base Sepolia (testnet)  | `eip155:84532` | [`USDC`](https://sepolia.basescan.org/token/0x036CbD53842c5426634e7929541eC2318f3dCF7e) |
+| MPP  | Tempo                   | `4217`         | [`OUSD`](https://explore.tempo.xyz/token/0x20c0000000000000000000006a37DA5C996874BE), [`USDC.e`](https://explore.tempo.xyz/token/0x20c000000000000000000000b9537d11c60e8b50), [`pathUSD`](https://explore.tempo.xyz/token/0x20c0000000000000000000000000000000000000) |
+| MPP  | Moderato (testnet)      | `42431`        | [`OUSD`](https://explore.testnet.tempo.xyz/token/0x20c0000000000000000000006a37DA5C996874BE), [`USDC.e`](https://explore.testnet.tempo.xyz/token/0x20c0000000000000000000009e8d7eb59b783726), [`pathUSD`](https://explore.testnet.tempo.xyz/token/0x20c0000000000000000000000000000000000000) |
 
 `ALLOW_TESTNET=true` admits testnets. x402 then advertises the Base Sepolia offer first, so
 a client taking the first offer it supports pays with faucet money. MPP discovers its chain
