@@ -30,10 +30,17 @@ const MODERATO = 42431;
  * The tokens each chain accepts, in offer order, written out here so the table
  * in src is checked rather than copied.
  */
+const OUSD = { address: "0x20c0000000000000000000006a37DA5C996874BE", symbol: "OUSD" };
 const PATH_USD = { address: "0x20c0000000000000000000000000000000000000", symbol: "pathUSD" };
 const TOKENS = new Map<number, { address: string; symbol: string }[]>([
-  [MAINNET, [PATH_USD]],
-  [MODERATO, [PATH_USD]],
+  [
+    MAINNET,
+    [OUSD, { address: "0x20c000000000000000000000b9537d11c60e8b50", symbol: "USDC.e" }, PATH_USD],
+  ],
+  [
+    MODERATO,
+    [OUSD, { address: "0x20c0000000000000000000009e8d7eb59b783726", symbol: "USDC.e" }, PATH_USD],
+  ],
 ]);
 
 /** The path every test that needs one paid endpoint uses. */
@@ -454,7 +461,7 @@ describe("mpp", () => {
     // said, in the token the answered challenge named (the first one offered).
     await assertRecorded(
       metrics,
-      `bx402_charged_base_units_total{rail="mpp",endpoint="${WEB_SEARCH_PATH}",asset="pathUSD on Tempo Testnet (Moderato)"} 5000`,
+      `bx402_charged_base_units_total{rail="mpp",endpoint="${WEB_SEARCH_PATH}",asset="OUSD on Tempo Testnet (Moderato)"} 5000`,
     );
     // The payer the signature names, counted and not recorded.
     await assertRecorded(metrics, 'bx402_distinct_payers{rail="mpp"} 1');

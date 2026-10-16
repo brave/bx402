@@ -22,7 +22,7 @@ import {
 } from "viem";
 import { createClient, http } from "viem/tempo";
 import { tempo as tempoMainnet, tempoModerato } from "viem/tempo/chains";
-import { pathusd } from "viem/tokens";
+import { ousd, pathusd, usdce } from "viem/tokens";
 import type { MppConfig } from "./config.js";
 import type { Offer } from "./discovery.js";
 import { ENDPOINTS, findEndpoint } from "./endpoints.js";
@@ -100,9 +100,14 @@ interface Network {
   tokens: ResolvedToken[];
 }
 
-/** The stablecoins accepted on `chainId`, in the order they are offered. */
+/**
+ * The stablecoins accepted on `chainId`, in the order they are offered. SDK
+ * clients pay the first offer they can, so OUSD, the SDK's own default, leads.
+ * viem does not list OUSD on the testnet yet, where it is deployed at its
+ * mainnet address.
+ */
 function acceptedTokens(chainId: typeof tempoMainnet.id | typeof tempoModerato.id) {
-  return [pathusd(chainId)];
+  return [ousd(tempoMainnet.id), usdce(chainId), pathusd(chainId)];
 }
 
 /**
