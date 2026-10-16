@@ -100,11 +100,10 @@ describe("discovery", () => {
     const doc = await documentFor();
     // The MPP charge behind the web search offers reads "0.005": a document
     // restating that would advertise a millionth of the price.
-    expect(offersOf(doc, WEB_SEARCH_PATH).map((offer) => offer.amount)).toEqual([
-      "5000",
-      "5000",
-      "5000",
-    ]);
+    // Two x402 offers and one MPP offer per accepted token.
+    expect(offersOf(doc, WEB_SEARCH_PATH).map((offer) => offer.amount)).toEqual(
+      Array(5).fill("5000"),
+    );
   });
 
   it("the_document_states_the_required_top_level_fields", async () => {
@@ -126,7 +125,9 @@ describe("discovery", () => {
     ]);
 
     const mppOnly = await documentFor({ x402: undefined });
-    expect(offersOf(mppOnly, WEB_SEARCH_PATH).map((offer) => offer.method)).toEqual(["tempo"]);
+    expect(offersOf(mppOnly, WEB_SEARCH_PATH).map((offer) => offer.method)).toEqual(
+      Array(3).fill("tempo"),
+    );
 
     // With no rails nothing is advertised that cannot be paid: the extension
     // is absent, never an empty list, while the 402 stays declared.
