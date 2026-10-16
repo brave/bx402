@@ -2,16 +2,20 @@
 #
 #   rpc <method> <params-json>   a JSON-RPC call against the chain
 #   new_payer                    sets PAYER_KEY and PAYER_ADDR to a fresh
-#                                throwaway key, faucet-funded with pathUSD
+#                                throwaway key, faucet-funded with OUSD and
+#                                pathUSD (the faucet gives no USDC.e)
 #   assert_http_200 <file>       asserts the captured response is a 200
-#   verify_settlement <file>     reads the payment-receipt header out of the
+#   verify_settlement <file> [token]
+#                                reads the payment-receipt header out of the
 #                                captured response and proves the referenced
-#                                transaction settled on chain
+#                                transaction settled on chain, moving `token`
+#                                when one is given
 
 RPC="${MPP_RPC_URL:-https://rpc.moderato.tempo.xyz}"
 URL="http://localhost:8080/res/v1/web/search?q=tempo+moderato"
-# The pathUSD precompile, the same address the mpp crate pins as PATH_USD.
+# Two of the tokens the server offers on Moderato, the two the faucet funds.
 PATH_USD="0x20c0000000000000000000000000000000000000"
+OUSD="0x20c0000000000000000000006a37DA5C996874BE"
 
 rpc() {
   curl -sf -m 15 -X POST "$RPC" -H 'content-type: application/json' \
@@ -30,13 +34,24 @@ new_payer() {
 
   rpc tempo_fundAddress "[\"$PAYER_ADDR\"]" > /dev/null
 
-  local balance=0
+  # Both funded tokens are paid with, so wait until both have landed.
+  local ousd=0 path_usd=0
   for _ in $(seq 1 30); do
-    balance=$(($(rpc eth_call "[{\"to\":\"$PATH_USD\",\"data\":\"0x70a08231000000000000000000000000${PAYER_ADDR#0x}\"},\"latest\"]" | jq -re .result)))
-    if [ "$balance" -gt 0 ]; then echo "funded: $balance base units"; break; fi
+    ousd=$(balance_of "$OUSD")
+    path_usd=$(balance_of "$PATH_USD")
+    if [ "$ousd" -gt 0 ] && [ "$path_usd" -gt 0 ]; then
+      echo "funded: $ousd OUSD and $path_usd pathUSD base units"
+      break
+    fi
     sleep 2
   done
-  [ "$balance" -gt 0 ] || { echo "faucet never funded $PAYER_ADDR" >&2; return 1; }
+  [ "$ousd" -gt 0 ] && [ "$path_usd" -gt 0 ] \
+    || { echo "faucet never funded $PAYER_ADDR" >&2; return 1; }
+}
+
+# The payer's balance of the token at $1, in base units.
+balance_of() {
+  echo $(($(rpc eth_call "[{\"to\":\"$1\",\"data\":\"0x70a08231000000000000000000000000${PAYER_ADDR#0x}\"},\"latest\"]" | jq -re .result)))
 }
 
 # Clients echo the status line differently: mppx keeps the wire form
@@ -61,9 +76,15 @@ assert receipt["status"] == "success", receipt
 print(receipt["reference"])
 EOF
   )
-  local block
-  block=$(rpc eth_getTransactionReceipt "[\"$tx\"]" \
-    | jq -re 'select(.result.status == "0x1") | .result.blockNumber')
+  local receipt block
+  receipt=$(rpc eth_getTransactionReceipt "[\"$tx\"]")
+  block=$(jq -re 'select(.result.status == "0x1") | .result.blockNumber' <<< "$receipt")
+  if [ -n "${2:-}" ]; then
+    jq -re --arg token "$2" \
+      'any(.result.logs[]; (.address | ascii_downcase) == ($token | ascii_downcase))' \
+      <<< "$receipt" > /dev/null \
+      || { echo "$tx moved no $2" >&2; return 1; }
+  fi
   echo "settled on chain: $tx in block $((block))"
   echo "  https://explore.testnet.tempo.xyz/receipt/$tx"
 }

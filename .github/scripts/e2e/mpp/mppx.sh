@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # The mppx leg of the MPP e2e: create a throwaway key, fund it from the
-# Moderato faucet, pay for one search, then prove the settlement on chain.
+# Moderato faucet, then pay for one search in each token the faucet funds and
+# prove each settlement on chain. `--currency` picks the token's challenge out
+# of the several the 402 carries.
 #
 # mppx signs with MPPX_PRIVATE_KEY when it is set, so no account store or OS
 # keyring is involved. The faucet is called directly over RPC because
@@ -18,7 +20,9 @@ echo "mppx version: $MPPX_VERSION"
 new_payer
 export MPPX_PRIVATE_KEY="$PAYER_KEY"
 
-./node_modules/.bin/mppx --network testnet -i "$URL" > response.txt 2> client.log
-assert_http_200 response.txt
-
-verify_settlement response.txt
+for token in "$OUSD" "$PATH_USD"; do
+  ./node_modules/.bin/mppx --network testnet --currency "$token" -i "$URL" \
+    > response.txt 2> client.log
+  assert_http_200 response.txt
+  verify_settlement response.txt "$token"
+done
