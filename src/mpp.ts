@@ -81,7 +81,7 @@ const PAY_TO_EVM = "0xbd9420A98a7Bd6B89765e5715e169481602D9c3d";
  * pathUSD, the stablecoin every charge is priced in. It is a TIP-20 precompile
  * at a fixed address, the same on mainnet and on the testnet, so there is no
  * per-network token to configure. Naming it explicitly matters: left unset the
- * SDK charges USDC on mainnet.
+ * SDK offers other stablecoins first.
  */
 const PATH_USD = "0x20c0000000000000000000000000000000000000";
 
@@ -207,13 +207,17 @@ export async function challenge(
  * The SDK handler, pointed at the configured endpoint. Verification asks for a
  * client per credential, and every credential this service accepts names the one
  * chain the endpoint reported, so the same client answers them all.
+ *
+ * The method accepts pathUSD on that chain and nothing else. Left to its
+ * defaults, the SDK builds one charge method per stablecoin it knows, and then
+ * every credential matches more than one of them and is refused.
  */
 function buildHandler(rail: MppConfig, chain: Chain) {
   const rpc = createClient({ chain, transport: http(rail.rpcUrl) });
   return Mppx.create({
     realm: REALM,
     secretKey: rail.secretKey,
-    methods: [tempo.charge({ getClient: () => rpc })],
+    methods: [tempo.charge({ getClient: () => rpc, chainId: chain.id, currencies: [PATH_USD] })],
   });
 }
 

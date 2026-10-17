@@ -129,6 +129,26 @@ describe("mpp", () => {
     await expect(clientOn(testConfig(), 1)).rejects.toThrow("unsupported Tempo chain 1");
   });
 
+  it("a_credential_for_our_challenge_reaches_the_transfer_check", async () => {
+    for (const chain of [MODERATO, MAINNET]) {
+      const built = await clientOn(testConfig(), chain);
+      const advertised = await challenge(built, WEB_SEARCH_PATH);
+      const parsed = Credential.from({
+        challenge: Challenge.deserialize(advertised?.value as string),
+        payload: { type: "transaction", signature: forgedTransaction().transaction },
+      });
+      const charge = built.charges.get(WEB_SEARCH_PATH);
+      // The real SDK handler, not a stand-in. The forged transaction pays no one,
+      // so the charge fails, but only once the SDK has matched the credential to
+      // our one method and gone looking for the transfer in it.
+      await expect(
+        built.handler.broadcastCredential(parsed, { request: { ...charge } }),
+        `${chain}`,
+      ).rejects.toThrow("no matching payment call found");
+      restoreNetwork();
+    }
+  });
+
   it("discovery_offers_restate_the_charge_in_base_units", async () => {
     const built = await clientOn(testConfig(), MODERATO);
     // The charge behind this offer reads "0.005"; the offer states base units.
