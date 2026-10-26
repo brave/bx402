@@ -26,7 +26,7 @@ import type { Offer } from "./discovery.js";
 import { ENDPOINTS, findEndpoint } from "./endpoints.js";
 import { AppError, describe, isRecord, jsonError } from "./error.js";
 import { log } from "./log.js";
-import { type Metrics, type Outcome, outcome, seconds, step } from "./metrics.js";
+import { failure, type Metrics, type Outcome, outcome, seconds, step } from "./metrics.js";
 import type { RestrictedAddressScreener } from "./screener.js";
 
 /**
@@ -250,6 +250,11 @@ function charges(chainId: number): Map<string, Charge> {
  * units, so the conversion runs back through `parseUnits` on the very charge
  * the challenge advertises rather than reading the catalog a second time.
  */
+/** Whether the chain this rail settles on is a testnet. */
+export function servesTestnet(client: Client): boolean {
+  return [...client.charges.values()].some((charge) => NETWORKS.get(charge.chainId)?.testnet);
+}
+
 export function offers(client: Client, path: string): Offer[] {
   const charge = client.charges.get(path);
   if (charge === undefined) {
@@ -434,6 +439,7 @@ export async function handle(
 
   const parsed = credential(headers);
   if (parsed === undefined) {
+    metrics.recordFailure(RAIL, step.DECODE, failure.UNDECODABLE);
     return ended(outcome.MALFORMED, paymentRejected());
   }
 
@@ -444,10 +450,14 @@ export async function handle(
     return ended(outcome.UNSUPPORTED, paymentRejected());
   }
 
+  // Recovered once and used twice: the screen below reads it, and a settled
+  // charge counts it.
+  const payer = signerAddress(payload);
+
   // Screen before the charge, so a blocked payer's transaction is never
   // broadcast and no funds move.
   if (screener !== undefined) {
-    const denied = await screener.requireAllowed(signerAddress(payload), paymentRejected());
+    const denied = await screener.requireAllowed(payer, paymentRejected());
     if (denied !== undefined) {
       return ended(outcome.SCREENED_OUT, denied);
     }
@@ -468,19 +478,26 @@ export async function handle(
   } catch (err) {
     metrics.recordPaymentStep(RAIL, step.CHARGE, seconds(started));
     if (endpointUnreachable(err)) {
+      metrics.recordFailure(RAIL, step.CHARGE, failure.UNREACHABLE);
       log.error(`mpp charge failed: tempo endpoint unreachable: ${describe(err)}`);
       return ended(outcome.NETWORK_UNAVAILABLE, gatewayError());
     }
+    // The SDK throws one error for every refusal, so the rail knows the charge
+    // was declined and not why.
+    metrics.recordFailure(RAIL, step.CHARGE, failure.UNSPECIFIED);
     return ended(outcome.REFUSED, paymentRejected());
   }
   metrics.recordPaymentStep(RAIL, step.CHARGE, seconds(started));
 
   metrics.recordPayment(RAIL, endpoint, outcome.SETTLED);
+  if (payer !== undefined) {
+    metrics.recordPayer(RAIL, payer);
+  }
   // The price comes from the catalog, so what we count as earned is what we
   // advertised rather than anything the payer said.
   const sold = findEndpoint(endpoint);
   if (sold !== undefined) {
-    metrics.recordCharge(RAIL, endpoint, sold.priceBaseUnits);
+    metrics.recordCharge(RAIL, endpoint, describeOffer(charge), sold.priceBaseUnits);
   }
   return attachReceipt(await runSearch(), receipt);
 }

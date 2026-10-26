@@ -14,12 +14,15 @@ import {
   decodeChallenge,
   hashCredentialHeader,
   mockFacilitator,
+  mockFacilitatorSupport,
+  mockOrigin,
   paymentSignature,
   restoreNetwork,
   restoreS3,
   screenerAnswering,
   screenerBlocking,
   signedTransactionCredentialHeader,
+  TEST_FACILITATOR,
   testConfig,
 } from "./support.js";
 
@@ -213,13 +216,53 @@ describe("app", () => {
     expect(response.headers.get("www-authenticate")).toBeNull();
 
     // The guide the document links is the file at the repository root.
-    expect(await response.text()).toMatch(/^# bx402\n/);
+    expect(await response.text()).toMatch(/^# http:\/\/localhost\n/);
 
     // Counted under its own label rather than folded into `other`.
     await assertRecorded(
       metrics,
       'bx402_http_requests_total{endpoint="/llms.txt",method="GET",status="200"} 1',
     );
+  });
+
+  it("the_icon_is_served_free_at_icon_png", async () => {
+    const metrics = new Metrics();
+    const hono = await buildApp(testConfig(), undefined, metrics);
+    const response = await hono.request("/icon.png");
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/png");
+    expect(response.headers.get("cache-control")).toBe("public, max-age=300");
+    expect(response.headers.get("payment-required")).toBeNull();
+    expect(response.headers.get("www-authenticate")).toBeNull();
+
+    // The file at the repository root, and a PNG by its signature.
+    const body = Buffer.from(await response.arrayBuffer());
+    expect(body.subarray(0, 8)).toEqual(
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
+
+    const head = await hono.request("/icon.png", { method: "HEAD" });
+    expect(head.headers.get("content-type")).toBe("image/png");
+    expect(await head.text()).toBe("");
+
+    await assertRecorded(
+      metrics,
+      'bx402_http_requests_total{endpoint="/icon.png",method="GET",status="200"} 1',
+    );
+  });
+
+  it("the_guide_names_the_origin_it_was_fetched_from", async () => {
+    // Behind the load balancer the service sees plain HTTP, and the public origin
+    // comes from `Host` and `X-Forwarded-Proto`, as it does for a `402`.
+    const hono = await buildApp(testConfig(), undefined, new Metrics());
+    const response = await hono.request("http://10.0.0.1:8080/llms.txt", {
+      headers: { host: "search.agent.s.brave.app", "x-forwarded-proto": "https" },
+    });
+    const text = await response.text();
+
+    expect(text).toContain("'https://search.agent.s.brave.app/res/v1/web/search?q=rust'");
+    expect(text).not.toContain("{origin}");
   });
 
   it("guide_head_carries_the_headers_without_a_body", async () => {
@@ -389,7 +432,9 @@ describe("app", () => {
     );
   });
   it("app_rejects_an_unparseable_facilitator_url", async () => {
-    const config = testConfig({ x402: { facilitatorUrl: "not a url", cdp: undefined } });
+    const config = testConfig({
+      x402: { facilitatorUrl: "not a url", cdp: undefined, enableBazaar: true },
+    });
     await expect(buildApp(config, undefined, new Metrics())).rejects.toThrow(
       "invalid configuration",
     );
@@ -399,7 +444,30 @@ describe("app", () => {
     // Built through `app` rather than `buildApp`, so nothing stands in for the
     // endpoint. The rail asks it which chain it serves and gets no answer, which
     // aborts startup rather than serving a rail that cannot price anything.
+    mockFacilitatorSupport();
     await expect(app(testConfig(), undefined, new Metrics())).rejects.toThrow("MPP_RPC_URL");
+  });
+
+  it("app_rejects_a_facilitator_it_cannot_load_support_from", async () => {
+    // The rail routes payments by what the facilitator supports, so a
+    // facilitator that errors, supports nothing, or answers nothing (the mock
+    // network refuses the request) aborts startup.
+    const x402Only = testConfig({ mpp: undefined });
+    const replies: [string, { status: number; body: object } | undefined][] = [
+      ["an error", { status: 503, body: { error: "unavailable" } }],
+      ["nothing supported", { status: 200, body: { kinds: [] } }],
+      ["no answer", undefined],
+    ];
+    for (const [label, reply] of replies) {
+      const pool = mockOrigin(TEST_FACILITATOR);
+      if (reply !== undefined) {
+        pool.intercept({ method: "GET", path: "/supported" }).reply(reply.status, reply.body);
+      }
+      await expect(app(x402Only, undefined, new Metrics()), label).rejects.toThrow(
+        "X402_FACILITATOR_URL",
+      );
+      restoreNetwork();
+    }
   });
 
   it("each_endpoint_answers_a_cold_402_at_its_own_price", async () => {
@@ -511,6 +579,22 @@ describe("app", () => {
     }
   });
 
+  it("every_request_to_a_paid_route_counts_the_client_that_sent_it", async () => {
+    const metrics = new Metrics();
+    const hono = await buildApp(testConfig(), undefined, metrics);
+
+    await hono.request("/res/v1/web/search?q=rust", { headers: { "user-agent": "mppx/0.9.2" } });
+    await hono.request("/res/v1/web/search?q=rust");
+    // Refused for carrying nothing readable, and still counted as an x402 attempt.
+    await hono.request("/res/v1/web/search?q=rust", {
+      headers: { "user-agent": "purl/1.0", "payment-signature": "not-a-payment" },
+    });
+
+    await assertRecorded(metrics, 'bx402_client_requests_total{client="mppx",attempted="none"} 1');
+    await assertRecorded(metrics, 'bx402_client_requests_total{client="none",attempted="none"} 1');
+    await assertRecorded(metrics, 'bx402_client_requests_total{client="purl",attempted="x402"} 1');
+  });
+
   // A payer on a rail this deployment turned off is counted apart from a caller
   // who simply did not pay, which is the only way to see clients stranded
   // against a disabled rail.
@@ -540,8 +624,10 @@ describe("app", () => {
     // The catalog price, not anything the payer stated.
     await assertRecorded(
       metrics,
-      'bx402_charged_base_units_total{rail="x402",endpoint="/res/v1/web/search"} 5000',
+      'bx402_charged_base_units_total{rail="x402",endpoint="/res/v1/web/search",asset="USDC on Base Sepolia (testnet)"} 5000',
     );
+    // One payer paid, counted without the address itself being recorded.
+    await assertRecorded(metrics, 'bx402_distinct_payers{rail="x402"} 1');
     for (const step of ["verify", "settle"]) {
       await assertRecorded(
         metrics,
@@ -743,6 +829,10 @@ describe("app", () => {
 
     expect(response.status).toBe(402);
     await assertPaymentOutcome(metrics, "x402", "malformed");
+    await assertRecorded(
+      metrics,
+      'bx402_payment_failures_total{rail="x402",step="decode",reason="bad_nonce"} 1',
+    );
   });
 
   it("a_screened_payment_releases_its_claim", async () => {
@@ -873,6 +963,10 @@ describe("app", () => {
     });
     expect(first.status).toBe(402);
     await assertPaymentOutcome(malformed, "mpp", "malformed");
+    await assertRecorded(
+      malformed,
+      'bx402_payment_failures_total{rail="mpp",step="decode",reason="undecodable"} 1',
+    );
 
     const unsupported = new Metrics();
     const second = await (

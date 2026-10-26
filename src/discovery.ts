@@ -53,7 +53,13 @@ export interface Offer {
 }
 
 /** Where the project documents itself for a human reader. */
-const HOMEPAGE = "https://github.com/brave-experiments/bx402";
+const HOMEPAGE = "https://github.com/brave/bx402";
+
+/**
+ * Brave's reference for what each paid path accepts and returns. Query
+ * parameters are forwarded unchanged, so Brave's reference is this API's.
+ */
+const API_REFERENCE = "https://api-dashboard.search.brave.com/documentation";
 
 /** One paid path's `get` operation, as far as the document states it. */
 interface Operation {
@@ -87,8 +93,8 @@ export interface DiscoveryDocument {
  * advisory all the same: the runtime `402` challenge is authoritative, which
  * is why every operation declares that response.
  *
- * There is no `servers` block. The service never learns its public origin,
- * so paths stay relative to wherever the document was fetched from.
+ * There is no `servers` block. No origin is configured, and a JSON reader can
+ * resolve paths against wherever it fetched the document from.
  */
 export function document(ctx: Context): DiscoveryDocument {
   const paths = Object.fromEntries(
@@ -98,13 +104,13 @@ export function document(ctx: Context): DiscoveryDocument {
     openapi: "3.1.0",
     // The build version stands in for the API version, so a release bumps
     // the document even when the paid surface is unchanged.
-    info: { title: "bx402", version: VERSION },
+    info: { title: "Brave Search API", version: VERSION },
     "x-service-info": {
       categories: ["search"],
       // The guide link is relative for the same reason there is no `servers`
-      // block: a reader that fetched the document has the origin to resolve
-      // it against, and the service itself does not.
-      docs: { homepage: HOMEPAGE, apiReference: `${HOMEPAGE}#endpoints`, llms: GUIDE_PATH },
+      // block. A reader that fetched the document has the origin to resolve it
+      // against.
+      docs: { homepage: HOMEPAGE, apiReference: API_REFERENCE, llms: GUIDE_PATH },
     },
     paths,
   };
@@ -133,20 +139,117 @@ function operation(ctx: Context, endpoint: Endpoint): Operation {
   return stated;
 }
 
+/** What the buyer's guide states about the deployment serving it. */
+export interface GuideFacts {
+  /** The x402 rail advertises a testnet offer. */
+  testnet: boolean;
+  /** The MPP rail takes payments. */
+  mpp: boolean;
+  /** The MPP rail settles on a testnet. */
+  mpptestnet: boolean;
+}
+
+/** The facts true of the deployment running `ctx`, read from its started rails. */
+export function guideFacts(ctx: Context): GuideFacts {
+  return {
+    testnet: ctx.x402 !== undefined && x402.servesTestnet(ctx.x402),
+    mpp: ctx.mpp !== undefined,
+    mpptestnet: ctx.mpp !== undefined && mpp.servesTestnet(ctx.mpp),
+  };
+}
+
 /**
- * The buyer's guide, read from `llms.txt` beside the package manifest. The
- * build is `tsc` alone with no bundler, so the file cannot be imported as a
- * module; it sits one level up from `src` and from the compiled `dist` alike,
- * the same trick `version.ts` uses for the manifest.
+ * The buyer's guide, read from `llms.txt`. The guide is rendered for `ctx`
+ * once. The returned function fills `{origin}` with the origin the guide was
+ * fetched from, so its commands work as pasted.
+ */
+export function guide(ctx: Context): (origin: string) => string {
+  const template = shipped("llms.txt", "the buyer's guide").toString("utf8");
+  const rendered = renderGuide(template, guideFacts(ctx));
+  return (origin) => rendered.replaceAll("{origin}", origin);
+}
+
+/** The service icon, read from `icon.png`. */
+export function icon(): Buffer {
+  return shipped("icon.png", "the service icon");
+}
+
+/**
+ * A file shipped beside the package manifest. The build is `tsc` alone with no
+ * bundler, so the file cannot be imported as a module. It sits one level up
+ * from `src` and from the compiled `dist` alike, the same trick `version.ts`
+ * uses for the manifest.
  *
  * Called when the routes are built, never at module load. A missing or
  * unreadable file refuses startup: serving a 404 instead would mean a healthy
- * looking deployment whose document advertises a guide it does not have.
+ * looking deployment that links a file it does not have.
  */
-export function guide(): string {
+function shipped(name: string, what: string): Buffer {
   try {
-    return readFileSync(new URL("../llms.txt", import.meta.url), "utf8");
+    return readFileSync(new URL(`../${name}`, import.meta.url));
   } catch (err) {
-    throw AppError.invalidConfig(`the buyer's guide llms.txt cannot be read: ${describe(err)}`);
+    throw AppError.invalidConfig(`${what} ${name} cannot be read: ${describe(err)}`);
   }
+}
+
+/** The path the guide's example commands buy. */
+const EXAMPLE_PATH = "/res/v1/web/search";
+
+/**
+ * Keep only the parts of `template` that are true of the deployment. A line
+ * `{if name}` or `{if !name}` opens a section kept when the named fact holds, or
+ * does not, and a line `{end}` closes it. Sections nest. A line `{prices}`
+ * becomes one table row per paid path, and `{price}` the price of the example
+ * search, both read from the endpoint table so the guide cannot drift from what
+ * a `402` charges. Blank lines left doubled by a dropped section close up. An
+ * unknown fact or an unbalanced section refuses startup, so the guide cannot
+ * quietly render wrong.
+ */
+export function renderGuide(template: string, facts: GuideFacts): string {
+  const flags = new Map<string, boolean>(Object.entries(facts));
+  const example = ENDPOINTS.find((endpoint) => endpoint.path === EXAMPLE_PATH);
+  if (example === undefined) {
+    throw AppError.invalidConfig(`llms.txt: the example path ${EXAMPLE_PATH} is not sold`);
+  }
+  const open: boolean[] = [];
+  const kept: string[] = [];
+  for (const line of template.split("\n")) {
+    const section = /^\{if (!?)([a-z0-9]+)\}$/.exec(line);
+    if (section !== null) {
+      const [, not, name = ""] = section;
+      const holds = flags.get(name);
+      if (holds === undefined) {
+        throw AppError.invalidConfig(`llms.txt: unknown section {if ${not}${name}}`);
+      }
+      open.push(not === "" ? holds : !holds);
+      continue;
+    }
+    if (line === "{end}") {
+      if (open.pop() === undefined) {
+        throw AppError.invalidConfig("llms.txt: {end} without a matching {if}");
+      }
+      continue;
+    }
+    if (!open.every(Boolean)) {
+      continue;
+    }
+    if (line === "{prices}") {
+      kept.push(...ENDPOINTS.map(priceRow));
+      continue;
+    }
+    kept.push(line);
+  }
+  if (open.length > 0) {
+    throw AppError.invalidConfig("llms.txt: a section is never closed with {end}");
+  }
+  return kept
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replaceAll("{price}", String(example.priceBaseUnits));
+}
+
+/** One path's row in the guide's price table: base units, and dollars per thousand. */
+function priceRow(endpoint: Endpoint): string {
+  const perThousand = (endpoint.priceBaseUnits * 1000) / 1_000_000;
+  return `| \`${endpoint.path}\` | ${endpoint.priceBaseUnits} | $${perThousand}/1k |`;
 }

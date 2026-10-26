@@ -1,6 +1,6 @@
 # bx402
 
-[![CI](https://github.com/brave-experiments/bx402/actions/workflows/ci.yml/badge.svg)](https://github.com/brave-experiments/bx402/actions/workflows/ci.yml)
+[![CI](https://github.com/brave/bx402/actions/workflows/ci.yml/badge.svg)](https://github.com/brave/bx402/actions/workflows/ci.yml)
 [![made-with-typescript](https://img.shields.io/badge/Made%20with-TypeScript-3178c6.svg)](https://www.typescriptlang.org/)
 
 A pay-per-request proxy in front of the [Brave Search API](https://brave.com/search/api/).
@@ -48,7 +48,7 @@ other facilitator host.
 
 1. Clone, then write your Brave Search API key to `.env`:
    ```sh
-   git clone git@github.com:brave-experiments/bx402.git
+   git clone git@github.com:brave/bx402.git
    cd bx402
    echo "BRAVE_SEARCH_API_KEY=<your-key>" >> .env
    ```
@@ -138,12 +138,19 @@ its own price.
 `GET /openapi.json` serves a machine-readable description of every paid path and the
 offers each enabled rail advertises, following MPP's payment discovery draft.
 `GET /llms.txt` serves the buyer's guide in prose, linked from the document's
-`docs.llms`. Both are free and cached for five minutes; discovery is advisory, and the
-`402` challenge stays authoritative.
+`docs.llms`. The guide is rendered for the deployment serving it, so it names only that
+deployment's origin, rails, and networks. Both are free and cached for five minutes;
+discovery is advisory, and the `402` challenge stays authoritative.
 
-The x402 challenge also declares how to call each paid path under `extensions.bazaar`, so
-a facilitator that keeps a catalog can list the endpoint once a payment for it settles.
-Facilitators that keep no catalog ignore the declaration.
+With `X402_ENABLE_BAZAAR=true`, the x402 challenge also declares how to call each paid path
+under `extensions.bazaar`, so a facilitator that keeps a catalog can list the endpoint once a
+payment for it settles. Facilitators that keep no catalog ignore the declaration. Unset or
+`false` leaves it out, so only a deployment meant to be listed, such as production, ever is.
+Any other value stops startup.
+
+The challenge's `resource` also names the service for a catalog: `serviceName`, `tags`, and
+an `iconUrl` pointing at `GET /icon.png`, a free route on the same origin that serves the
+Brave logo.
 
 ## Networks
 

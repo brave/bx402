@@ -9,11 +9,19 @@
  */
 
 import { serve } from "@hono/node-server";
-import { Counter, Gauge, Histogram, openMetricsContentType, Registry } from "@prometheus-io/client";
+import {
+  Counter,
+  collectDefaultMetrics,
+  Gauge,
+  Histogram,
+  openMetricsContentType,
+  Registry,
+} from "@prometheus-io/client";
 import { Hono, type MiddlewareHandler } from "hono";
 import { findEndpoint } from "./endpoints.js";
 import { describe } from "./error.js";
 import { log } from "./log.js";
+import { PayerWindow } from "./payers.js";
 import { VERSION } from "./version.js";
 
 /**
@@ -24,7 +32,7 @@ const BIND_HOSTNAME = "0.0.0.0";
 const BIND_PORT = 8090;
 
 /**
- * Buckets for every duration we record, in seconds.
+ * Buckets for the durations of work that leaves this process, in seconds.
  *
  * The boundaries straddle the deadlines this service enforces, so a histogram
  * answers directly how close requests are running to them: two seconds for a
@@ -33,6 +41,17 @@ const BIND_PORT = 8090;
  * because settling on chain dominates the time.
  */
 const DURATION_BUCKETS = [0.05, 0.1, 0.25, 0.5, 1, 2, 3, 5, 8, 15, 30];
+
+/**
+ * Buckets for the time taken to answer a request, which is the one duration
+ * that is sometimes all our own work.
+ *
+ * A challenge touches neither chain nor upstream and answers in single digit
+ * milliseconds, and challenges are most of the traffic, so these carry
+ * boundaries below the ones above. Nothing that waits on a network gets them:
+ * a histogram of a chain settlement would spend them all on an empty range.
+ */
+const REQUEST_BUCKETS = [0.005, 0.01, 0.025, ...DURATION_BUCKETS];
 
 /**
  * Catch-all label value, used wherever the caller supplies something outside the
@@ -44,10 +63,37 @@ const OTHER = "other";
  * The free routes, each counted under its own path. The literals are repeated
  * here rather than imported so a label cannot drift from its route.
  */
-const FREE_PATHS = new Set(["/health", "/openapi.json", "/llms.txt"]);
+const FREE_PATHS = new Set(["/health", "/openapi.json", "/llms.txt", "/icon.png"]);
 
 /** The payment rails, as the `rail` label on every per-rail metric spells them. */
 export type RailLabel = "x402" | "mpp";
+
+/**
+ * What a request attempted: a rail, nothing at all, or both at once. The four
+ * values are spelled here rather than imported from the dispatcher, so the
+ * label cannot drift into something unbounded.
+ */
+export type Attempt = RailLabel | "none" | "both";
+
+/**
+ * Clients that name themselves in a `User-Agent`, matched on what the header
+ * starts with. The list is short on purpose: a client is only ever counted
+ * under a name from here, so no caller can mint a series by naming itself
+ * something new. It grows from what the unrecognized clients log reports.
+ */
+const CLIENTS = ["purl", "mppx", "curl"];
+
+/**
+ * A request that named no client. The x402 JavaScript SDKs send no
+ * `User-Agent` at all, so silence is an answer in itself and not an unknown.
+ */
+const NO_CLIENT = "none";
+
+/** The most unrecognized `User-Agent`s one process reports, so logs cannot be flooded. */
+const UNKNOWN_CLIENTS_LOGGED = 16;
+
+/** The longest `User-Agent` echoed into a log line. */
+const USER_AGENT_LOGGED = 80;
 
 /** Why a request was answered with a challenge instead of served. */
 export const challenge = {
@@ -120,10 +166,58 @@ export const screening = {
 export type Screening = (typeof screening)[keyof typeof screening];
 
 /**
- * The steps of a payment worth timing separately. Which steps a rail reports
- * depends on whether it can check a payment without moving money.
+ * Why a payment failed, in terms neither rail is specific to.
+ *
+ * `outcome` says what became of a payment, which is what a caller experiences.
+ * This says what went wrong, which is what an operator needs: whether the money
+ * was never there, whether the proof had already been spent, or whether nobody
+ * answered us at all. Each rail maps what it was told onto these, so one
+ * vocabulary covers a facilitator, a chain, and whatever comes next.
+ *
+ * A proof we could not read at all fails before anyone is asked, so the
+ * reasons from `UNDECODABLE` on say which part of it was missing or out of
+ * shape. That is the payer's client to fix, and these tell its author what.
+ */
+export const failure = {
+  /** Nobody answered: a timeout, a refused connection, an unreadable reply. */
+  UNREACHABLE: "unreachable",
+  /** The payer could not cover the charge. */
+  INSUFFICIENT_FUNDS: "insufficient_funds",
+  /** The proof had already been spent, so the money moved once at most. */
+  ALREADY_USED: "already_used",
+  /** The proof was refused as bad: the signature, the scheme, or the network. */
+  INVALID_PAYMENT: "invalid_payment",
+  /** The proof arrived outside the window it is valid for. */
+  EXPIRED: "expired",
+  /** Reported as still in flight, and never reported as done. */
+  PENDING: "pending",
+  /** Refused without saying why. */
+  UNSPECIFIED: "unspecified",
+  /** A reason we have no bucket for, so one caller cannot mint a series. */
+  OTHER: "other",
+  /** The proof is not in the encoding the rail reads, so nothing in it could be read. */
+  UNDECODABLE: "undecodable",
+  /** The proof does not name the offer it accepted. */
+  MISSING_OFFER: "missing_offer",
+  /** The proof carries no authorization to move the money. */
+  MISSING_AUTHORIZATION: "missing_authorization",
+  /** The payer the proof names is not an address. */
+  BAD_PAYER: "bad_payer",
+  /** The proof's nonce is not one a transfer could use. */
+  BAD_NONCE: "bad_nonce",
+} as const;
+
+/** One of the `failure` reasons. */
+export type Failure = (typeof failure)[keyof typeof failure];
+
+/**
+ * The steps of a payment worth telling apart. Which steps a rail times depends
+ * on whether it can check a payment without moving money. Reading the proof is
+ * counted when it fails but never timed, since it takes no time worth showing.
  */
 export const step = {
+  /** Reading the proof, before anything is checked. */
+  DECODE: "decode",
   /** Checking a payment without moving money. */
   VERIFY: "verify",
   /** Moving the money. */
@@ -157,7 +251,7 @@ export class Metrics {
     name: "bx402_http_request_duration_seconds",
     help: "Time to answer a request, payment included.",
     labelNames: ["endpoint", "method"],
-    buckets: DURATION_BUCKETS,
+    buckets: REQUEST_BUCKETS,
     registers: [this.registry],
   });
   private readonly upstreamRequests = new Counter({
@@ -185,6 +279,12 @@ export class Metrics {
     labelNames: ["rail", "endpoint", "outcome"],
     registers: [this.registry],
   });
+  private readonly paymentFailures = new Counter({
+    name: "bx402_payment_failures",
+    help: "Payments that failed, by rail, the step that failed and why.",
+    labelNames: ["rail", "step", "reason"],
+    registers: [this.registry],
+  });
   private readonly paymentStepDuration = new Histogram({
     name: "bx402_payment_step_duration_seconds",
     help: "Time for one step of a payment, by rail.",
@@ -194,9 +294,31 @@ export class Metrics {
   });
   private readonly chargedBaseUnits = new Counter({
     name: "bx402_charged_base_units",
-    help: "Base units of currency charged for settled payments.",
-    labelNames: ["rail", "endpoint"],
+    help: "Base units charged for settled payments, by the money they were charged in.",
+    labelNames: ["rail", "endpoint", "asset"],
     registers: [this.registry],
+  });
+  private readonly clientRequests = new Counter({
+    name: "bx402_client_requests",
+    help: "Requests to a paid endpoint, by the client that sent them and what it attempted.",
+    labelNames: ["client", "attempted"],
+    registers: [this.registry],
+  });
+  private readonly payers = new PayerWindow();
+  /** `User-Agent`s already reported as unrecognized, so each is logged once. */
+  private readonly unknownClients = new Set<string>();
+  private readonly distinctPayers = new Gauge({
+    name: "bx402_distinct_payers",
+    help: "Distinct addresses that paid in the last hour, by rail.",
+    labelNames: ["rail"],
+    registers: [this.registry],
+    // Read at scrape time, so the count falls back to zero once a rail stops
+    // being paid rather than holding whatever it last saw.
+    collect: () => {
+      for (const [rail, paying] of this.payers.counts()) {
+        this.distinctPayers.set({ rail }, paying);
+      }
+    },
   });
   private readonly screenings = new Counter({
     name: "bx402_screenings",
@@ -215,6 +337,53 @@ export class Metrics {
     }).set({ version: VERSION }, 1);
   }
 
+  /**
+   * Report the process itself as well as the traffic.
+   *
+   * Without this a graph cannot tell a restart from a lull, since every counter
+   * here starts at zero again and nothing says when zero began.
+   *
+   * Called by the listener rather than from the constructor, because each test
+   * builds a registry of its own and none of them wants a process collector.
+   */
+  collectProcessMetrics(): void {
+    collectDefaultMetrics({ register: this.registry });
+  }
+
+  /**
+   * Record one request to a paid endpoint, by the client that sent it and the
+   * rail it attempted.
+   *
+   * A `User-Agent` this does not recognize is counted as `other` and written to
+   * the log once, which is how the recognized list grows: from what arrives
+   * rather than from guesswork. The log line is trimmed to printable ASCII,
+   * since the header is whatever the caller chose to send.
+   */
+  recordClient(userAgent: string | undefined, attempted: Attempt): void {
+    const client = clientLabel(userAgent);
+    if (
+      client === OTHER &&
+      userAgent !== undefined &&
+      this.unknownClients.size < UNKNOWN_CLIENTS_LOGGED
+    ) {
+      const named = userAgent.slice(0, USER_AGENT_LOGGED).replace(/[^ -~]/g, "");
+      if (!this.unknownClients.has(named)) {
+        this.unknownClients.add(named);
+        log.info(`client not recognized: ${named}`);
+      }
+    }
+    this.clientRequests.inc({ client, attempted });
+  }
+
+  /**
+   * Record that `payer` paid, so one caller in a loop can be told apart from
+   * many callers. The address is held only to be counted, and only the count is
+   * ever reported.
+   */
+  recordPayer(rail: RailLabel, payer: string): void {
+    this.payers.seen(rail, payer);
+  }
+
   /** Record what one address screen decided. */
   recordScreening(decided: Screening): void {
     this.screenings.inc({ outcome: decided });
@@ -230,6 +399,11 @@ export class Metrics {
     this.payments.inc({ rail, endpoint, outcome: ended });
   }
 
+  /** Record why one payment failed, alongside the outcome `recordPayment` gives it. */
+  recordFailure(rail: RailLabel, failed: Step, reason: Failure): void {
+    this.paymentFailures.inc({ rail, step: failed, reason });
+  }
+
   /** Record how long one step of a payment took. */
   recordPaymentStep(rail: RailLabel, timed: Step, seconds: number): void {
     this.paymentStepDuration.observe({ rail, step: timed }, seconds);
@@ -239,9 +413,14 @@ export class Metrics {
    * Record the money a settled payment brought in, in the currency's base units.
    * Read from the catalog, so it is the price we advertised rather than anything
    * the payer stated.
+   *
+   * `asset` names the money and the chain it settled on, in the same words the
+   * catalog offers it in. Base units only mean anything next to that name: the
+   * scale belongs to the asset, so a stablecoin with different decimals cannot
+   * be added to this one, and a testnet dollar is not a dollar at all.
    */
-  recordCharge(rail: RailLabel, endpoint: string, baseUnits: number): void {
-    this.chargedBaseUnits.inc({ rail, endpoint }, baseUnits);
+  recordCharge(rail: RailLabel, endpoint: string, asset: string, baseUnits: number): void {
+    this.chargedBaseUnits.inc({ rail, endpoint, asset }, baseUnits);
   }
 
   /** Record one request the service answered. */
@@ -282,6 +461,19 @@ export function endpointLabel(path: string): string {
   return findEndpoint(path)?.path ?? OTHER;
 }
 
+/**
+ * The label for the client that sent a request, read from its `User-Agent`.
+ * Anything outside `CLIENTS` collapses to one value, since the header is
+ * caller-supplied and otherwise unbounded.
+ */
+function clientLabel(userAgent: string | undefined): string {
+  if (userAgent === undefined || userAgent.trim() === "") {
+    return NO_CLIENT;
+  }
+  const named = userAgent.toLowerCase();
+  return CLIENTS.find((client) => named.startsWith(client)) ?? OTHER;
+}
+
 /** The methods served, and so the only method labels a caller can mint. */
 const METHOD_LABELS = new Set(["GET", "POST", "HEAD"]);
 
@@ -311,6 +503,8 @@ export function measure(metrics: Metrics): MiddlewareHandler {
  * unobserved.
  */
 export function serveMetrics(metrics: Metrics): Promise<never> {
+  metrics.collectProcessMetrics();
+
   const hono = new Hono();
   hono.get("/metrics", async (c) => {
     try {

@@ -1,6 +1,6 @@
 {
   "name": "bx402",
-  "version": "0.2.0",
+  "version": "0.6.0",
   "description": "Micropayment proxy for the Brave Search API over x402 and MPP",
   "license": "MPL-2.0",
   "private": true,
@@ -8,7 +8,7 @@
   "engines": {
     "node": ">=24"
   },
-  "packageManager": "pnpm@11.21.0",
+  "packageManager": "pnpm@12.11.0",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
@@ -23,8 +23,8 @@
     "@hono/node-server": "^2.1.1",
     "@prometheus-io/client": "^0.16.1",
     "@smithy/node-http-handler": "^4.12.1",
-    "@x402/core": "^2.25.0",
-    "@x402/evm": "^2.25.0",
+    "@x402/core": "^2.28.0",
+    "@x402/evm": "^2.28.0",
     "hono": "^4.13.7",
     "mppx": "0.9.2",
     "ox": "0.14.44",
@@ -34,6 +34,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.5.12",
     "@types/node": "^26.6.0",
+    "@x402/extensions": "2.28.0",
     "aws-sdk-client-mock": "^4.1.0",
     "typescript": "^7.0.2",
     "vitest": "^5.0.0"
