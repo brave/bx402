@@ -18,6 +18,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@aws-sdk/client-kms": "^3.1156.0",
     "@aws-sdk/client-s3": "^3.1127.0",
     "@coinbase/x402": "2.1.0",
     "@hono/node-server": "^2.1.1",
