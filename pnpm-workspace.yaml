@@ -16,3 +16,8 @@ overrides:
   # version is flagged by pnpm audit (GHSA-68fv-2mgg-jv7q, fixed in 1.2.2) and
   # only vitest reaches it, never the service.
   source-map-js: ^1.2.2
+auditConfig:
+  ignoreGhsas:
+    # zod is fixed only in 4.6.6, and @x402/core requires zod 3, which has no
+    # fixed release. Drop this once @x402/core moves to zod 4.
+    - GHSA-mrhx-c7xc-m3w5
