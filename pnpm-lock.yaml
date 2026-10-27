@@ -3115,6 +3115,23 @@ snapshots:
 
   undici@8.11.2: {}
 
+  viem@2.56.5(typescript@7.0.2)(zod@3.25.76):
+    dependencies:
+      '@noble/curves': 1.9.1
+      '@noble/hashes': 1.8.0
+      '@scure/bip32': 1.7.0
+      '@scure/bip39': 1.6.0
+      abitype: 1.2.3(typescript@7.0.2)(zod@3.25.76)
+      isows: 1.0.7(ws@8.21.0)
+      ox: 0.14.44(typescript@7.0.2)(zod@3.25.76)
+      ws: 8.21.0
+    optionalDependencies:
+      typescript: 7.0.2
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+      - zod
+
   viem@2.56.5(typescript@7.0.2)(zod@4.5.4):
     dependencies:
       '@noble/curves': 1.9.1
@@ -3132,7 +3149,7 @@ snapshots:
       - utf-8-validate
       - zod
 
-  vite@8.2.2(@types/node@26.4.1):
+  vite@8.2.2(@types/node@26.6.2):
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.7
