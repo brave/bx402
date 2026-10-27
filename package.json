@@ -6,7 +6,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=24"
+    "node": ">=24.15"
   },
   "packageManager": "pnpm@12.11.0",
   "scripts": {
