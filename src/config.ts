@@ -2,6 +2,7 @@
  * Runtime configuration, read from the environment at startup.
  */
 
+import { allowTestnetFromEnv, optionalVar, requireVar } from "./env.js";
 import { AppError } from "./error.js";
 
 /** Default base URL when `BRAVE_SEARCH_API_BASE_URL` is unset. */
@@ -159,7 +160,7 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): Config {
         }
       : undefined,
     restrictedAddressS3Bucket: optionalVar(env, "RESTRICTED_ADDRESS_S3_BUCKET"),
-    allowTestnet: env.ALLOW_TESTNET === "true",
+    allowTestnet: allowTestnetFromEnv(env),
   };
 }
 
@@ -205,19 +206,4 @@ function cdpFromEnv(env: NodeJS.ProcessEnv): CdpCredentials | undefined {
     throw AppError.invalidConfig("CDP_API_KEY_ID and CDP_API_KEY_SECRET must be set together");
   }
   return undefined;
-}
-
-/** Read an optional environment variable, treating unset and empty alike. */
-function optionalVar(env: NodeJS.ProcessEnv, name: string): string | undefined {
-  const value = env[name];
-  return value === undefined || value === "" ? undefined : value;
-}
-
-/** Read a required environment variable, or fail startup naming it. */
-function requireVar(env: NodeJS.ProcessEnv, name: string): string {
-  const value = env[name];
-  if (value === undefined) {
-    throw AppError.missingConfig(name);
-  }
-  return value;
 }
