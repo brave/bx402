@@ -172,7 +172,7 @@ importers:
   .:
     dependencies:
       '@aws-sdk/client-kms':
-        specifier: ^3.1156.0
+        specifier: 3.1156.0
         version: 3.1156.0
       '@aws-sdk/client-s3':
         specifier: ^3.1127.0
