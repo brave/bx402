@@ -18,6 +18,7 @@ import {
   publicActions,
   type Transport,
   type VerifyTypedDataParameters,
+  withTimeout,
 } from "viem";
 import { jsonRpc } from "viem/nonce";
 import { AppError, describe } from "../error.js";
@@ -79,10 +80,17 @@ export function settlementClient(account: LocalAccount, chain: Chain, transport:
 }
 
 /**
+ * How long one network's startup check may take. Without it, an RPC that
+ * accepts the connection and never answers holds startup for about 40 seconds
+ * through viem's own timeouts and retries.
+ */
+export const CHECK_TIMEOUT_MS = 10_000;
+
+/**
  * Check every network before serving: its RPC must answer for the chain it is
- * configured as, and `address` must hold some ETH there to pay gas. Any failure
- * stops startup. Errors name the chain and never the RPC URL, which may carry a
- * provider key.
+ * configured as, and `address` must hold some ETH there to pay gas. Any failure,
+ * or no answer within `CHECK_TIMEOUT_MS`, stops startup. Errors name the chain
+ * and never the RPC URL, which may carry a provider key.
  */
 export async function checkNetworks(
   address: Address,
@@ -92,10 +100,13 @@ export async function checkNetworks(
   await Promise.all(
     networks.map(async ({ chain, rpcUrl }) => {
       const client = createPublicClient({ chain, transport: transport(rpcUrl) });
-      const [chainId, balance] = await Promise.all([
-        client.getChainId(),
-        client.getBalance({ address }),
-      ]).catch((err: unknown) => {
+      const [chainId, balance] = await withTimeout(
+        () => Promise.all([client.getChainId(), client.getBalance({ address })]),
+        {
+          timeout: CHECK_TIMEOUT_MS,
+          errorInstance: new Error(`no answer in ${CHECK_TIMEOUT_MS / 1000} seconds`),
+        },
+      ).catch((err: unknown) => {
         // A viem error's full message includes the URL; its short message does not.
         const reason = err instanceof BaseError ? err.shortMessage : describe(err);
         throw AppError.invalidConfig(`${chain.name} RPC: ${reason}`);
