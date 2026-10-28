@@ -21,7 +21,7 @@ import {
 } from "viem";
 import { jsonRpc } from "viem/nonce";
 import { AppError, describe } from "../error.js";
-import type { SettlementNetwork } from "./config.js";
+import { networkId, type SettlementNetwork } from "./config.js";
 
 /**
  * A facilitator that settles exact payments on `networks`, signing and paying
@@ -34,7 +34,7 @@ export function facilitator(account: LocalAccount, networks: SettlementNetwork[]
     // Settling re-runs the transfer as a simulation first, so a payment that
     // would revert, such as one whose authorization was already used, is
     // refused before it costs gas.
-    service.register(`eip155:${chain.id}`, new ExactEvmScheme(signer, { simulateInSettle: true }));
+    service.register(networkId(chain), new ExactEvmScheme(signer, { simulateInSettle: true }));
   }
   return service;
 }

@@ -6,11 +6,13 @@ import { privateKeyToAccount } from "viem/accounts";
 import { loadDotEnv } from "../env.js";
 import { describe } from "../error.js";
 import { exitAfterLogs, initLogging, log } from "../log.js";
+import { serveMetrics } from "../metrics.js";
 import { VERSION } from "../version.js";
 import { facilitatorApp } from "./app.js";
 import { facilitatorConfigFromEnv, type SignerSource } from "./config.js";
 import { checkNetworks, facilitator } from "./core.js";
 import { kmsAccount } from "./kms.js";
+import { FacilitatorMetrics, measured } from "./metrics.js";
 
 /** How long one KMS call may take, so a stalled connection cannot hang a settlement. */
 const KMS_TIMEOUT_MS = 10_000;
@@ -34,7 +36,8 @@ async function run(): Promise<void> {
 
   await checkNetworks(account.address, config.networks);
 
-  const hono = facilitatorApp(facilitator(account, config.networks));
+  const metrics = new FacilitatorMetrics(config.networks);
+  const hono = facilitatorApp(measured(facilitator(account, config.networks), metrics));
   let stopping = false;
   const server = serve(
     {
@@ -56,22 +59,25 @@ async function run(): Promise<void> {
     },
   );
 
-  // Serve until asked to stop. A failure on the listener, a port already in use
-  // above all, leaves through this promise to the single exit site below
+  // Serve until asked to stop. A failure on either listener, a port already in
+  // use above all, leaves through this promise to the single exit site below
   // instead of crashing on an unhandled error event. On SIGTERM or SIGINT the
   // listener stops taking requests and the ones in flight run to the end, so a
   // restart never cuts a settlement off between sending its transaction and
   // answering. The pod's grace period must outlast the wait for a receipt.
-  await new Promise<void>((resolve, reject) => {
-    server.on("error", reject);
-    const stop = (signal: NodeJS.Signals) => {
-      log.info(`${signal}: finishing requests in flight`);
-      stopping = true;
-      server.close((err) => (err === undefined ? resolve() : reject(err)));
-    };
-    process.once("SIGTERM", stop);
-    process.once("SIGINT", stop);
-  });
+  await Promise.race([
+    new Promise<void>((resolve, reject) => {
+      server.on("error", reject);
+      const stop = (signal: NodeJS.Signals) => {
+        log.info(`${signal}: finishing requests in flight`);
+        stopping = true;
+        server.close((err) => (err === undefined ? resolve() : reject(err)));
+      };
+      process.once("SIGTERM", stop);
+      process.once("SIGINT", stop);
+    }),
+    serveMetrics(metrics),
+  ]);
   log.info("stopped");
 }
 

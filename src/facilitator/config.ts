@@ -22,6 +22,11 @@ export interface SettlementNetwork {
   rpcUrl: string;
 }
 
+/** The CAIP-2 id x402 names `chain` by, such as `eip155:8453` for Base. */
+export function networkId(chain: Chain): `eip155:${number}` {
+  return `eip155:${chain.id}`;
+}
+
 /** Runtime configuration for the facilitator, read once from the environment at startup. */
 export interface FacilitatorConfig {
   /** The key that signs settlement transactions. */
