@@ -1,5 +1,8 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
+import { once } from "node:events";
 import { mkdirSync, mkdtempSync } from "node:fs";
+import { createServer, type IncomingMessage, request } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -116,4 +119,88 @@ describe("facilitator startup", () => {
     expect(code).toBe(1);
     expect(stderr, `stderr was: ${stderr}`).toContain("invalid configuration: .env");
   });
+});
+
+describe("facilitator shutdown", () => {
+  it("sigterm_finishes_requests_in_flight_then_exits_zero", async () => {
+    // A stand-in RPC that answers the startup checks: chain Base, some balance.
+    const rpc = createServer((req, res) => {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
+      req.on("end", () => {
+        const { id, method } = JSON.parse(body) as { id: number; method: string };
+        const result = method === "eth_chainId" ? "0x2105" : "0x1";
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ jsonrpc: "2.0", id, result }));
+      });
+    });
+    rpc.listen(0, "127.0.0.1");
+    await once(rpc, "listening");
+    const { port } = rpc.address() as AddressInfo;
+
+    const facilitator = spawn("node", [FACILITATOR_ENTRYPOINT], {
+      cwd: EMPTY_DIR,
+      env: {
+        PATH: process.env.PATH ?? "",
+        FACILITATOR_PRIVATE_KEY: KEY,
+        BASE_RPC_URL: `http://127.0.0.1:${port}`,
+        // A free port, so the test never meets another service on 8080.
+        FACILITATOR_PORT: "0",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const exited = once(facilitator, "exit");
+    let stderr = "";
+    facilitator.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    // Resolves once the facilitator has logged `line`, and fails at once if it
+    // exits first, with what it printed.
+    const logged = (line: string) =>
+      Promise.race([
+        new Promise<void>((resolve) => {
+          const check = () => stderr.includes(line) && resolve();
+          facilitator.stderr.on("data", check);
+          check();
+        }),
+        exited.then(() => {
+          throw new Error(`exited before logging "${line}": ${stderr}`);
+        }),
+      ]);
+
+    try {
+      await logged("listening on");
+      const listening = Number(/listening on [^:]+:(\d+)/.exec(stderr)?.[1]);
+
+      // Open a request and hold its body back, so it is still in flight when
+      // the signal arrives.
+      const held = request({
+        host: "127.0.0.1",
+        port: listening,
+        method: "POST",
+        path: "/settle",
+        headers: { "transfer-encoding": "chunked" },
+      });
+      const answered = once(held, "response");
+      held.write("{");
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      facilitator.kill("SIGTERM");
+      await logged("finishing requests in flight");
+      held.end("}");
+
+      const [response] = (await answered) as [IncomingMessage];
+      expect(response.statusCode).toBe(400);
+      // The answer closes its connection, so a caller that keeps connections
+      // open cannot hold the stop open with new requests.
+      expect(response.headers.connection).toBe("close");
+      const [code] = await exited;
+      expect(code, `stderr was: ${stderr}`).toBe(0);
+    } finally {
+      facilitator.kill("SIGKILL");
+      rpc.close();
+    }
+  }, 20_000);
 });
