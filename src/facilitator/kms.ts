@@ -65,10 +65,8 @@ function uncompressedPoint(spki: Uint8Array | undefined): Hex {
 }
 
 /**
- * Sign a 32 byte hash with the KMS key. KMS answers in DER, may pick either of
- * the two valid `s` values where Ethereum accepts only the lower, and leaves out
- * the recovery bit, which is found by recovering each candidate against the
- * key's own address.
+ * Sign a 32 byte hash with the KMS key, and re-encode the answer in the form
+ * Ethereum accepts. Nothing here changes what was signed.
  */
 async function signHash(client: KMSClient, keyId: string, address: Address, hash: Hex) {
   const { Signature: der } = await client.send(
@@ -82,8 +80,20 @@ async function signHash(client: KMSClient, keyId: string, address: Address, hash
   if (der === undefined) {
     throw new Error("kms returned no signature");
   }
+
+  // KMS answers in DER, which holds the two numbers r and s. Every signature has
+  // a twin, (r, s) and (r, n - s), and both are valid for the same key and hash.
+  // KMS may return either, but Ethereum only accepts the one with the smaller s
+  // (EIP-2), so pick that one.
   const { r, s } = Secp256k1.noble.Signature.fromDER(der).normalizeS();
+
+  // Ethereum wants r and s as 32 bytes each, left padded with zeros.
   const parts = { r: numberToHex(r, { size: 32 }), s: numberToHex(s, { size: 32 }) };
+
+  // Ethereum also wants a recovery bit, which says which of two possible public
+  // keys made the signature. DER has no room for it, so try both values and keep
+  // the one that recovers our own address. If neither does, KMS signed with
+  // some other key, and nothing is returned.
   for (const yParity of [0, 1] as const) {
     const candidate = { ...parts, yParity };
     if (isAddressEqual(await recoverAddress({ hash, signature: candidate }), address)) {
