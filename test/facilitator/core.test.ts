@@ -1,8 +1,8 @@
-import { custom, type Hex, parseTransaction } from "viem";
+import { custom, type Hex, http, parseTransaction } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base, baseSepolia } from "viem/chains";
 import { describe, expect, it } from "vitest";
-import { facilitator, settlementClient } from "../../src/facilitator/core.js";
+import { checkNetworks, facilitator, settlementClient } from "../../src/facilitator/core.js";
 
 const account = privateKeyToAccount(`0x${"11".repeat(32)}`);
 
@@ -75,5 +75,58 @@ describe("settlementClient", () => {
     await expect(send()).rejects.toThrow();
     await send();
     expect(broadcasts).toEqual([5]);
+  });
+});
+
+/** An RPC per URL that reports `chainId` and a balance of `balance` wei for any address. */
+function rpcs(answers: Record<string, { chainId: number; balance?: bigint }>) {
+  return (rpcUrl: string) =>
+    custom(
+      {
+        async request({ method }) {
+          const answer = answers[rpcUrl];
+          if (answer === undefined) throw new Error(`no rpc for ${rpcUrl}`);
+          const { chainId, balance = 1n } = answer;
+          if (method === "eth_chainId") return `0x${chainId.toString(16)}`;
+          if (method === "eth_getBalance") return `0x${balance.toString(16)}`;
+          throw new Error(`unexpected ${method}`);
+        },
+      },
+      { retryCount: 0 },
+    );
+}
+
+const healthy = {
+  "http://base.invalid": { chainId: base.id },
+  "http://sepolia.invalid": { chainId: baseSepolia.id },
+};
+
+describe("checkNetworks", () => {
+  it("passes_when_every_rpc_serves_its_chain_and_the_signer_has_gas", async () => {
+    await checkNetworks(account.address, networks, rpcs(healthy));
+  });
+
+  it("refuses_an_rpc_serving_another_chain", async () => {
+    const answers = { ...healthy, "http://sepolia.invalid": { chainId: 1 } };
+    await expect(checkNetworks(account.address, networks, rpcs(answers))).rejects.toThrow(
+      `Base Sepolia RPC serves chain 1, expected ${baseSepolia.id}`,
+    );
+  });
+
+  it("refuses_a_signer_with_no_eth_on_a_network", async () => {
+    const answers = { ...healthy, "http://base.invalid": { chainId: base.id, balance: 0n } };
+    await expect(checkNetworks(account.address, networks, rpcs(answers))).rejects.toThrow(
+      `signer ${account.address} holds no ETH on Base`,
+    );
+  });
+
+  it("refuses_an_unreachable_rpc_without_naming_its_url", async () => {
+    // A closed local port, with a provider key in the path as paid RPCs carry one.
+    const rpcUrl = "http://127.0.0.1:9/v2/provider-key";
+    const failure = checkNetworks(account.address, [{ chain: base, rpcUrl }], (url) =>
+      http(url, { retryCount: 0 }),
+    );
+    await expect(failure).rejects.toThrow("Base RPC: HTTP request failed.");
+    await expect(failure).rejects.not.toThrow("provider-key");
   });
 });
