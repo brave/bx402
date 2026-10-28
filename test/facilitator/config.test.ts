@@ -22,6 +22,7 @@ describe("facilitator config", () => {
     expect(facilitatorConfigFromEnv({ ...RPC, FACILITATOR_KMS_KEY_ID: "key-id" })).toEqual({
       signer: { kind: "kms", keyId: "key-id" },
       networks: [{ chain: base, rpcUrl: "https://base.example" }],
+      port: 8080,
     });
     expect(facilitatorConfigFromEnv({ ...RPC, FACILITATOR_PRIVATE_KEY: KEY }).signer).toEqual({
       kind: "privateKey",
@@ -59,5 +60,16 @@ describe("facilitator config", () => {
       { chain: base, rpcUrl: "https://base.example" },
       { chain: baseSepolia, rpcUrl: "https://sepolia.example" },
     ]);
+  });
+
+  it("reads_the_port_and_refuses_a_malformed_one", () => {
+    const env = { ...RPC, FACILITATOR_KMS_KEY_ID: "key-id" };
+    expect(facilitatorConfigFromEnv({ ...env, FACILITATOR_PORT: "9090" }).port).toBe(9090);
+    expect(facilitatorConfigFromEnv({ ...env, FACILITATOR_PORT: "0" }).port).toBe(0);
+    for (const malformed of ["http", "-1", "80.5", "65536"]) {
+      expect(errorFor({ ...env, FACILITATOR_PORT: malformed })).toMatch(
+        /FACILITATOR_PORT: expected a port number/,
+      );
+    }
   });
 });

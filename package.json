@@ -12,6 +12,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
+    "start:facilitator": "node dist/facilitator/main.js",
     "lint": "biome ci .",
     "format": "biome format --write .",
     "typecheck": "tsc --noEmit",

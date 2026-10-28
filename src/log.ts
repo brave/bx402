@@ -36,3 +36,12 @@ export const log = {
   debug: (message: string) => emit("debug", message),
   trace: (message: string) => emit("trace", message),
 };
+
+/**
+ * Exit with `code` once every line logged so far has reached stderr. On some
+ * platforms, macOS among them, a write to a pipe finishes later, and exiting
+ * at once would drop the last lines.
+ */
+export function exitAfterLogs(code: number): void {
+  process.stderr.write("", () => process.exit(code));
+}

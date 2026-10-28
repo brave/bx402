@@ -2,7 +2,23 @@
  * Readers for environment variables, shared by every program this image runs.
  */
 
-import { AppError } from "./error.js";
+import { AppError, describe } from "./error.js";
+
+/**
+ * Load a local `.env` for development. Real environment variables still take
+ * precedence, and an absent file is not an error. A `.env` that is there but
+ * cannot be read stops startup, so it never looks like missing settings.
+ */
+export function loadDotEnv(): void {
+  try {
+    process.loadEnvFile();
+  } catch (err: unknown) {
+    // No `.env` beside the process, which is the normal case in production.
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw AppError.invalidConfig(`.env: ${describe(err)}`);
+    }
+  }
+}
 
 /** Read an optional environment variable, treating unset and empty alike. */
 export function optionalVar(env: NodeJS.ProcessEnv, name: string): string | undefined {

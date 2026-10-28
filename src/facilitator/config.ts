@@ -28,7 +28,12 @@ export interface FacilitatorConfig {
   signer: SignerSource;
   /** The networks to settle on: Base mainnet, and Base Sepolia when testnets are allowed. */
   networks: SettlementNetwork[];
+  /** The port serving the HTTP API. */
+  port: number;
 }
+
+/** The port the HTTP API listens on when `FACILITATOR_PORT` is unset. */
+const DEFAULT_PORT = 8080;
 
 /**
  * Read configuration from the process environment:
@@ -39,6 +44,8 @@ export interface FacilitatorConfig {
  * - `BASE_RPC_URL` (required): Base mainnet RPC endpoint.
  * - `BASE_SEPOLIA_RPC_URL` (required with `ALLOW_TESTNET`): Base Sepolia RPC endpoint.
  * - `ALLOW_TESTNET` (optional): `true` also settles on Base Sepolia.
+ * - `FACILITATOR_PORT` (optional): port for the HTTP API, 8080 by default. `0`
+ *   picks a free one.
  */
 export function facilitatorConfigFromEnv(env: NodeJS.ProcessEnv = process.env): FacilitatorConfig {
   return {
@@ -49,6 +56,7 @@ export function facilitatorConfigFromEnv(env: NodeJS.ProcessEnv = process.env): 
         ? [{ chain: baseSepolia, rpcUrl: requireVar(env, "BASE_SEPOLIA_RPC_URL") }]
         : []),
     ],
+    port: portFromEnv(env),
   };
 }
 
@@ -71,6 +79,19 @@ function signerFromEnv(env: NodeJS.ProcessEnv): SignerSource {
     throw AppError.invalidConfig("FACILITATOR_PRIVATE_KEY: expected 0x and 64 hex digits");
   }
   return { kind: "privateKey", key };
+}
+
+/** Read the listening port, the default when unset. */
+function portFromEnv(env: NodeJS.ProcessEnv): number {
+  const value = optionalVar(env, "FACILITATOR_PORT");
+  if (value === undefined) {
+    return DEFAULT_PORT;
+  }
+  const port = Number(value);
+  if (!/^\d+$/.test(value) || port > 65_535) {
+    throw AppError.invalidConfig("FACILITATOR_PORT: expected a port number");
+  }
+  return port;
 }
 
 /** Whether `value` is a 32 byte secp256k1 private key in hex. */

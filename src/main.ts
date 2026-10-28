@@ -1,8 +1,9 @@
 import { serve } from "@hono/node-server";
 import { app, banner } from "./app.js";
 import { configFromEnv } from "./config.js";
+import { loadDotEnv } from "./env.js";
 import { describe } from "./error.js";
-import { initLogging, log } from "./log.js";
+import { exitAfterLogs, initLogging, log } from "./log.js";
 import { Metrics, serveMetrics } from "./metrics.js";
 import { initScreener, statusLine } from "./screener.js";
 
@@ -15,13 +16,7 @@ const PORT = 8080;
  * single exit site below.
  */
 async function run(): Promise<void> {
-  // Load a local `.env` for development. Real environment variables still take
-  // precedence, and an absent file is not an error.
-  try {
-    process.loadEnvFile();
-  } catch {
-    // No `.env` beside the process, which is the normal case in production.
-  }
+  loadDotEnv();
   initLogging();
 
   log.info(banner());
@@ -69,5 +64,5 @@ async function run(): Promise<void> {
 
 run().catch((err: unknown) => {
   log.error(describe(err));
-  process.exit(1);
+  exitAfterLogs(1);
 });
