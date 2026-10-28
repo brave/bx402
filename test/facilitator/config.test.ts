@@ -72,4 +72,14 @@ describe("facilitator config", () => {
       );
     }
   });
+
+  it("settles_on_base_sepolia_alone_when_no_mainnet_rpc_is_set", () => {
+    expect(
+      facilitatorConfigFromEnv({
+        FACILITATOR_PRIVATE_KEY: KEY,
+        ALLOW_TESTNET: "true",
+        BASE_SEPOLIA_RPC_URL: "https://sepolia.example",
+      }).networks,
+    ).toEqual([{ chain: baseSepolia, rpcUrl: "https://sepolia.example" }]);
+  });
 });
