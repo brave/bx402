@@ -30,8 +30,29 @@ import type { SettlementNetwork } from "./config.js";
 export function facilitator(account: LocalAccount, networks: SettlementNetwork[]): x402Facilitator {
   const service = new x402Facilitator();
   for (const { chain, rpcUrl } of networks) {
-    const client = settlementClient(account, chain, http(rpcUrl));
-    const signer = toFacilitatorEvmSigner({
+    const signer = settlementSigner(account, chain, http(rpcUrl));
+    // Settling re-runs the transfer as a simulation first, so a payment that
+    // would revert, such as one whose authorization was already used, is
+    // refused before it costs gas.
+    service.register(`eip155:${chain.id}`, new ExactEvmScheme(signer, { simulateInSettle: true }));
+  }
+  return service;
+}
+
+/**
+ * How long a settlement waits for its receipt. It must end well before a
+ * resource server's own request gives up (90 seconds in the x402 SDK's HTTP
+ * client), so the payment gets an answer, `settlement_pending` with the
+ * transaction hash, instead of the resource server timing out while the
+ * transaction may still go through.
+ */
+export const RECEIPT_TIMEOUT_MS = 60_000;
+
+/** The signer the exact scheme settles through on `chain`, sending from `account`. */
+export function settlementSigner(account: LocalAccount, chain: Chain, transport: Transport) {
+  const client = settlementClient(account, chain, transport);
+  return toFacilitatorEvmSigner(
+    {
       address: account.address,
       readContract: (args) => client.readContract(args),
       // viem types this as a union over how the block is picked, and the
@@ -41,13 +62,9 @@ export function facilitator(account: LocalAccount, networks: SettlementNetwork[]
       sendTransaction: (args) => client.sendTransaction(args),
       waitForTransactionReceipt: (args) => client.waitForTransactionReceipt(args),
       getCode: (args) => client.getCode(args),
-    });
-    // Settling re-runs the transfer as a simulation first, so a payment that
-    // would revert, such as one whose authorization was already used, is
-    // refused before it costs gas.
-    service.register(`eip155:${chain.id}`, new ExactEvmScheme(signer, { simulateInSettle: true }));
-  }
-  return service;
+    },
+    { confirmationTimeoutMs: RECEIPT_TIMEOUT_MS },
+  );
 }
 
 /**
