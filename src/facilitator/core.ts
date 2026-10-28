@@ -7,8 +7,11 @@ import { x402Facilitator } from "@x402/core/facilitator";
 import { toFacilitatorEvmSigner } from "@x402/evm";
 import { ExactEvmScheme } from "@x402/evm/exact/facilitator";
 import {
+  type Address,
+  BaseError,
   type Chain,
   createNonceManager,
+  createPublicClient,
   createWalletClient,
   http,
   type LocalAccount,
@@ -17,6 +20,7 @@ import {
   type VerifyTypedDataParameters,
 } from "viem";
 import { jsonRpc } from "viem/nonce";
+import { AppError, describe } from "../error.js";
 import type { SettlementNetwork } from "./config.js";
 
 /**
@@ -55,4 +59,38 @@ export function facilitator(account: LocalAccount, networks: SettlementNetwork[]
 export function settlementClient(account: LocalAccount, chain: Chain, transport: Transport) {
   const sender = { ...account, nonceManager: createNonceManager({ source: jsonRpc() }) };
   return createWalletClient({ account: sender, chain, transport }).extend(publicActions);
+}
+
+/**
+ * Check every network before serving: its RPC must answer for the chain it is
+ * configured as, and `address` must hold some ETH there to pay gas. Any failure
+ * stops startup. Errors name the chain and never the RPC URL, which may carry a
+ * provider key.
+ */
+export async function checkNetworks(
+  address: Address,
+  networks: SettlementNetwork[],
+  transport: (rpcUrl: string) => Transport = http,
+): Promise<void> {
+  await Promise.all(
+    networks.map(async ({ chain, rpcUrl }) => {
+      const client = createPublicClient({ chain, transport: transport(rpcUrl) });
+      const [chainId, balance] = await Promise.all([
+        client.getChainId(),
+        client.getBalance({ address }),
+      ]).catch((err: unknown) => {
+        // A viem error's full message includes the URL; its short message does not.
+        const reason = err instanceof BaseError ? err.shortMessage : describe(err);
+        throw AppError.invalidConfig(`${chain.name} RPC: ${reason}`);
+      });
+      if (chainId !== chain.id) {
+        throw AppError.invalidConfig(
+          `${chain.name} RPC serves chain ${chainId}, expected ${chain.id}`,
+        );
+      }
+      if (balance === 0n) {
+        throw AppError.invalidConfig(`signer ${address} holds no ETH on ${chain.name}`);
+      }
+    }),
+  );
 }
