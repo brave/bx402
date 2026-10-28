@@ -7,12 +7,16 @@ import { x402Facilitator } from "@x402/core/facilitator";
 import { toFacilitatorEvmSigner } from "@x402/evm";
 import { ExactEvmScheme } from "@x402/evm/exact/facilitator";
 import {
+  type Chain,
+  createNonceManager,
   createWalletClient,
   http,
   type LocalAccount,
   publicActions,
+  type Transport,
   type VerifyTypedDataParameters,
 } from "viem";
+import { jsonRpc } from "viem/nonce";
 import type { SettlementNetwork } from "./config.js";
 
 /**
@@ -22,9 +26,7 @@ import type { SettlementNetwork } from "./config.js";
 export function facilitator(account: LocalAccount, networks: SettlementNetwork[]): x402Facilitator {
   const service = new x402Facilitator();
   for (const { chain, rpcUrl } of networks) {
-    const client = createWalletClient({ account, chain, transport: http(rpcUrl) }).extend(
-      publicActions,
-    );
+    const client = settlementClient(account, chain, http(rpcUrl));
     const signer = toFacilitatorEvmSigner({
       address: account.address,
       readContract: (args) => client.readContract(args),
@@ -42,4 +44,15 @@ export function facilitator(account: LocalAccount, networks: SettlementNetwork[]
     service.register(`eip155:${chain.id}`, new ExactEvmScheme(signer, { simulateInSettle: true }));
   }
   return service;
+}
+
+/**
+ * The client that sends settlements on `chain` from `account`. It keeps its own
+ * nonce count, so settlements in flight at the same time each get the next
+ * nonce instead of all reading the same one from the chain. A send that fails
+ * resets the count, so it leaves no gap.
+ */
+export function settlementClient(account: LocalAccount, chain: Chain, transport: Transport) {
+  const sender = { ...account, nonceManager: createNonceManager({ source: jsonRpc() }) };
+  return createWalletClient({ account: sender, chain, transport }).extend(publicActions);
 }
