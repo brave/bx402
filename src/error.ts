@@ -22,7 +22,18 @@ export function describe(err: unknown): string {
   if (!(err instanceof Error)) {
     return String(err);
   }
-  return err.cause === undefined ? err.message : `${err.message}: ${describe(err.cause)}`;
+  const message = shortMessage(err) ?? err.message;
+  return err.cause === undefined ? message : `${message}: ${describe(err.cause)}`;
+}
+
+/**
+ * The one line summary viem and ox errors carry beside their full message. The
+ * full message adds the request URL, which can hold an RPC provider's key, so
+ * only the summary is logged. Read by its shape, so this module imports neither.
+ */
+function shortMessage(err: Error): string | undefined {
+  const { shortMessage } = err as { shortMessage?: unknown };
+  return typeof shortMessage === "string" ? shortMessage : undefined;
 }
 
 /**
