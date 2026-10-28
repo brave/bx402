@@ -8,10 +8,40 @@ services:
       - "8090:8090"
     environment:
       BRAVE_SEARCH_API_KEY: ${BRAVE_SEARCH_API_KEY}
-      # The public testnet facilitator. Production points this at the
-      # Coinbase-hosted one and sets the CDP key pair beside it.
+      # The public testnet facilitator, or ours under the `facilitator` profile
+      # below. Production points this at the Coinbase-hosted one and sets the
+      # CDP key pair beside it.
       X402_FACILITATOR_URL: ${X402_FACILITATOR_URL:-https://x402.org/facilitator}
       MPP_RPC_URL: ${MPP_RPC_URL:-https://rpc.moderato.tempo.xyz}
       MPP_SECRET_KEY: ${MPP_SECRET_KEY}
       # The compose stack is the testnet environment. Production unsets this.
       ALLOW_TESTNET: ${ALLOW_TESTNET:-true}
+    depends_on:
+      # bx402 asks the facilitator what it supports as it starts, so it waits
+      # for ours when that runs. Without the profile there is nothing to wait for.
+      facilitator:
+        condition: service_healthy
+        required: false
+
+  # Our own facilitator on Base Sepolia, started only with
+  # `docker compose --profile facilitator up`. bx402 uses it once
+  # X402_FACILITATOR_URL=http://facilitator:8080 is set in `.env`. It pays the
+  # settlement gas, so FACILITATOR_PRIVATE_KEY must hold Base Sepolia ETH. No
+  # port is published: only bx402 talks to it.
+  facilitator:
+    build: .
+    profiles: [facilitator]
+    entrypoint: ["node", "dist/facilitator/main.js"]
+    environment:
+      FACILITATOR_PRIVATE_KEY: ${FACILITATOR_PRIVATE_KEY:-}
+      BASE_SEPOLIA_RPC_URL: ${BASE_SEPOLIA_RPC_URL:-https://sepolia.base.org}
+      ALLOW_TESTNET: "true"
+    healthcheck:
+      # The image has Node and no curl.
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8080/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 5s
+      retries: 12

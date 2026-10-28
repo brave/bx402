@@ -70,6 +70,18 @@ other facilitator host.
    header, but purl does not print it. Look the payer's USDC transfer up on
    [sepolia.basescan.org](https://sepolia.basescan.org) instead.
 
+To settle through the facilitator in this repo instead of x402.org, give it a key
+holding Base Sepolia ETH, since it pays the settlement gas, and point `bx402` at it:
+
+```sh
+echo "FACILITATOR_PRIVATE_KEY=0x<key>" >> .env
+echo "X402_FACILITATOR_URL=http://facilitator:8080" >> .env
+docker compose --profile facilitator up --build -d
+```
+
+Settlements then come from that key's address. It settles on Base Sepolia only;
+`BASE_SEPOLIA_RPC_URL` overrides the public RPC it uses.
+
 ## Paying for a search on Tempo Moderato
 
 No facilitator here: the server talks to a Tempo RPC endpoint directly, and
