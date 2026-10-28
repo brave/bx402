@@ -4,6 +4,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { base, baseSepolia } from "viem/chains";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  CHECK_TIMEOUT_MS,
   checkNetworks,
   facilitator,
   RECEIPT_TIMEOUT_MS,
@@ -151,6 +152,10 @@ const healthy = {
 };
 
 describe("checkNetworks", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("passes_when_every_rpc_serves_its_chain_and_the_signer_has_gas", async () => {
     await checkNetworks(account.address, networks, rpcs(healthy));
   });
@@ -177,5 +182,18 @@ describe("checkNetworks", () => {
     );
     await expect(failure).rejects.toThrow("Base RPC: HTTP request failed.");
     await expect(failure).rejects.not.toThrow("provider-key");
+  });
+
+  it("gives_up_on_an_rpc_that_never_answers", async () => {
+    vi.useFakeTimers();
+    // Takes the request and never answers it.
+    const silent = () => custom({ request: () => new Promise(() => {}) }, { retryCount: 0 });
+    const failure = checkNetworks(account.address, networks, silent);
+    failure.catch(() => {});
+
+    await vi.advanceTimersByTimeAsync(CHECK_TIMEOUT_MS);
+    await expect(failure).rejects.toThrow(
+      `Base RPC: no answer in ${CHECK_TIMEOUT_MS / 1000} seconds`,
+    );
   });
 });
