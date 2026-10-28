@@ -3,6 +3,8 @@
  * startup.
  */
 
+import type { Chain } from "viem";
+import { base, baseSepolia } from "viem/chains";
 import { allowTestnetFromEnv, optionalVar, requireVar } from "../env.js";
 import { AppError } from "../error.js";
 
@@ -14,14 +16,18 @@ export type SignerSource =
   | { kind: "kms"; keyId: string }
   | { kind: "privateKey"; key: `0x${string}` };
 
+/** A network to settle on, and the RPC endpoint the facilitator reaches its chain through. */
+export interface SettlementNetwork {
+  chain: Chain;
+  rpcUrl: string;
+}
+
 /** Runtime configuration for the facilitator, read once from the environment at startup. */
 export interface FacilitatorConfig {
   /** The key that signs settlement transactions. */
   signer: SignerSource;
-  /** Base mainnet RPC endpoint. */
-  baseRpcUrl: string;
-  /** Base Sepolia RPC endpoint, present only when testnets are allowed. */
-  baseSepoliaRpcUrl: string | undefined;
+  /** The networks to settle on: Base mainnet, and Base Sepolia when testnets are allowed. */
+  networks: SettlementNetwork[];
 }
 
 /**
@@ -37,10 +43,12 @@ export interface FacilitatorConfig {
 export function facilitatorConfigFromEnv(env: NodeJS.ProcessEnv = process.env): FacilitatorConfig {
   return {
     signer: signerFromEnv(env),
-    baseRpcUrl: requireVar(env, "BASE_RPC_URL"),
-    baseSepoliaRpcUrl: allowTestnetFromEnv(env)
-      ? requireVar(env, "BASE_SEPOLIA_RPC_URL")
-      : undefined,
+    networks: [
+      { chain: base, rpcUrl: requireVar(env, "BASE_RPC_URL") },
+      ...(allowTestnetFromEnv(env)
+        ? [{ chain: baseSepolia, rpcUrl: requireVar(env, "BASE_SEPOLIA_RPC_URL") }]
+        : []),
+    ],
   };
 }
 
