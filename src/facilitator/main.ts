@@ -35,16 +35,44 @@ async function run(): Promise<void> {
   await checkNetworks(account.address, config.networks);
 
   const hono = facilitatorApp(facilitator(account, config.networks));
-  const server = serve({ fetch: hono.fetch, hostname: "0.0.0.0", port: config.port }, (address) => {
-    log.info(`listening on ${address.address}:${address.port}`);
-  });
+  let stopping = false;
+  const server = serve(
+    {
+      // Once stopping, every answer closes its connection, so a caller that
+      // keeps connections open sends its next request elsewhere instead of
+      // holding the stop open.
+      fetch: async (request, env) => {
+        const response = await hono.fetch(request, env);
+        if (stopping) {
+          response.headers.set("connection", "close");
+        }
+        return response;
+      },
+      hostname: "0.0.0.0",
+      port: config.port,
+    },
+    (address) => {
+      log.info(`listening on ${address.address}:${address.port}`);
+    },
+  );
 
-  // Serve until the process is stopped; a failure on the listener, a port
-  // already in use above all, leaves through this promise to the single exit
-  // site below instead of crashing on an unhandled error event.
-  await new Promise<never>((_resolve, reject) => {
+  // Serve until asked to stop. A failure on the listener, a port already in use
+  // above all, leaves through this promise to the single exit site below
+  // instead of crashing on an unhandled error event. On SIGTERM or SIGINT the
+  // listener stops taking requests and the ones in flight run to the end, so a
+  // restart never cuts a settlement off between sending its transaction and
+  // answering. The pod's grace period must outlast the wait for a receipt.
+  await new Promise<void>((resolve, reject) => {
     server.on("error", reject);
+    const stop = (signal: NodeJS.Signals) => {
+      log.info(`${signal}: finishing requests in flight`);
+      stopping = true;
+      server.close((err) => (err === undefined ? resolve() : reject(err)));
+    };
+    process.once("SIGTERM", stop);
+    process.once("SIGINT", stop);
   });
+  log.info("stopped");
 }
 
 /** The account that signs settlements, from the configured source. */
@@ -61,7 +89,12 @@ async function signer(source: SignerSource): Promise<LocalAccount> {
   return kmsAccount(client, source.keyId);
 }
 
-run().catch((err: unknown) => {
-  log.error(describe(err));
-  exitAfterLogs(1);
-});
+run().then(
+  // Exit once the logs are out rather than wait on idle sockets, such as the
+  // KMS client's pool.
+  () => exitAfterLogs(0),
+  (err: unknown) => {
+    log.error(describe(err));
+    exitAfterLogs(1);
+  },
+);
