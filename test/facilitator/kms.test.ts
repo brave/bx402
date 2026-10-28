@@ -81,6 +81,14 @@ describe("kms account", () => {
         message: { text: "hi" },
       }),
     ).rejects.toThrow(/transactions only/);
+    await expect(
+      signer.signTransaction({
+        ...transaction,
+        type: "eip4844",
+        blobVersionedHashes: [`0x01${"00".repeat(31)}`],
+        maxFeePerBlobGas: 1n,
+      }),
+    ).rejects.toThrow(/blob transactions/);
     expect(kms.commandCalls(SignCommand)).toHaveLength(0);
   });
 
