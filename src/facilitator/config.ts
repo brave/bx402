@@ -26,7 +26,10 @@ export interface SettlementNetwork {
 export interface FacilitatorConfig {
   /** The key that signs settlement transactions. */
   signer: SignerSource;
-  /** The networks to settle on: Base mainnet, and Base Sepolia when testnets are allowed. */
+  /**
+   * The networks to settle on: Base mainnet, and Base Sepolia when testnets are
+   * allowed. Never empty.
+   */
   networks: SettlementNetwork[];
   /** The port serving the HTTP API. */
   port: number;
@@ -41,20 +44,23 @@ const DEFAULT_PORT = 8080;
  * - `FACILITATOR_KMS_KEY_ID`: AWS KMS key that signs settlements.
  * - `FACILITATOR_PRIVATE_KEY`: a raw private key instead. Exactly one of the two
  *   must be set.
- * - `BASE_RPC_URL` (required): Base mainnet RPC endpoint.
+ * - `BASE_RPC_URL` (required without `ALLOW_TESTNET`): Base mainnet RPC
+ *   endpoint. With `ALLOW_TESTNET` it is optional, and Base mainnet is settled
+ *   on only when it is set, so a testnet run needs no mainnet funds.
  * - `BASE_SEPOLIA_RPC_URL` (required with `ALLOW_TESTNET`): Base Sepolia RPC endpoint.
  * - `ALLOW_TESTNET` (optional): `true` also settles on Base Sepolia.
  * - `FACILITATOR_PORT` (optional): port for the HTTP API, 8080 by default. `0`
  *   picks a free one.
  */
 export function facilitatorConfigFromEnv(env: NodeJS.ProcessEnv = process.env): FacilitatorConfig {
+  const signer = signerFromEnv(env);
+  const testnet = allowTestnetFromEnv(env);
+  const baseRpcUrl = testnet ? optionalVar(env, "BASE_RPC_URL") : requireVar(env, "BASE_RPC_URL");
   return {
-    signer: signerFromEnv(env),
+    signer,
     networks: [
-      { chain: base, rpcUrl: requireVar(env, "BASE_RPC_URL") },
-      ...(allowTestnetFromEnv(env)
-        ? [{ chain: baseSepolia, rpcUrl: requireVar(env, "BASE_SEPOLIA_RPC_URL") }]
-        : []),
+      ...(baseRpcUrl === undefined ? [] : [{ chain: base, rpcUrl: baseRpcUrl }]),
+      ...(testnet ? [{ chain: baseSepolia, rpcUrl: requireVar(env, "BASE_SEPOLIA_RPC_URL") }] : []),
     ],
     port: portFromEnv(env),
   };
