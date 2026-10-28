@@ -1,8 +1,15 @@
 import type { PaymentPayload, PaymentRequirements, SettleResponse } from "@x402/core/types";
+import { custom } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Service } from "../../src/facilitator/app.js";
-import { FacilitatorMetrics, measured } from "../../src/facilitator/metrics.js";
+import {
+  BALANCE_INTERVAL_MS,
+  FacilitatorMetrics,
+  measured,
+  watchBalances,
+} from "../../src/facilitator/metrics.js";
 import { VERSION } from "../../src/version.js";
 import { assertNotRecorded, assertRecorded } from "../support.js";
 
@@ -104,5 +111,74 @@ describe("facilitator metrics", () => {
       'x402_facilitator_requests_total{step="verify",network="other",outcome="valid"} 1',
     );
     await assertNotRecorded(recorded, "eip155:1");
+  });
+});
+
+describe("watchBalances", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const signer = privateKeyToAccount(`0x${"11".repeat(32)}`).address;
+  const networks = [{ chain: base, rpcUrl: "http://base.invalid" }];
+
+  /** An RPC whose balance answers come from `balances` in turn, a throw for `undefined`. */
+  function rpc(balances: (bigint | undefined)[]) {
+    let reads = 0;
+    const transport = () =>
+      custom(
+        {
+          async request({ method }) {
+            if (method !== "eth_getBalance") throw new Error(`unexpected ${method}`);
+            const balance = balances[Math.min(reads, balances.length - 1)];
+            reads += 1;
+            if (balance === undefined) throw new Error("rpc down");
+            return `0x${balance.toString(16)}`;
+          },
+        },
+        { retryCount: 0 },
+      );
+    return { transport, reads: () => reads };
+  }
+
+  it("reports_the_balance_in_eth_at_once_and_on_every_interval", async () => {
+    vi.useFakeTimers();
+    const recorded = metrics();
+    const { transport, reads } = rpc([2n * 10n ** 18n, 15n * 10n ** 17n]);
+    const stop = watchBalances(recorded, signer, networks, transport);
+
+    await vi.advanceTimersByTimeAsync(0);
+    await assertRecorded(recorded, `x402_facilitator_signer_balance_eth{network="${BASE}"} 2`);
+    await vi.advanceTimersByTimeAsync(BALANCE_INTERVAL_MS - 1_000);
+    expect(reads()).toBe(1);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await assertRecorded(recorded, `x402_facilitator_signer_balance_eth{network="${BASE}"} 1.5`);
+    stop();
+  });
+
+  it("drops_the_balance_when_it_cannot_be_read_and_keeps_trying", async () => {
+    vi.useFakeTimers();
+    const recorded = metrics();
+    const { transport } = rpc([10n ** 18n, undefined, 10n ** 18n]);
+    const stop = watchBalances(recorded, signer, networks, transport);
+
+    await vi.advanceTimersByTimeAsync(0);
+    await assertRecorded(recorded, "x402_facilitator_signer_balance_eth");
+    await vi.advanceTimersByTimeAsync(BALANCE_INTERVAL_MS);
+    await assertNotRecorded(recorded, "x402_facilitator_signer_balance_eth{");
+    await vi.advanceTimersByTimeAsync(BALANCE_INTERVAL_MS);
+    await assertRecorded(recorded, `x402_facilitator_signer_balance_eth{network="${BASE}"} 1`);
+    stop();
+  });
+
+  it("stops_reading_once_stopped", async () => {
+    vi.useFakeTimers();
+    const { transport, reads } = rpc([1n]);
+    const stop = watchBalances(metrics(), signer, networks, transport);
+
+    await vi.advanceTimersByTimeAsync(0);
+    stop();
+    await vi.advanceTimersByTimeAsync(5 * BALANCE_INTERVAL_MS);
+    expect(reads()).toBe(1);
   });
 });
