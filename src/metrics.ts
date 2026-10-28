@@ -496,13 +496,16 @@ export function measure(metrics: Metrics): MiddlewareHandler {
   };
 }
 
+/** A registry the metrics listener can serve: the service's, or the facilitator's. */
+export type MetricsSource = Pick<Metrics, "collectProcessMetrics" | "render">;
+
 /**
  * Serve the metrics endpoint on its own listener until shutdown.
  *
  * A port already in use aborts startup rather than leaving the service running
  * unobserved.
  */
-export function serveMetrics(metrics: Metrics): Promise<never> {
+export function serveMetrics(metrics: MetricsSource): Promise<never> {
   metrics.collectProcessMetrics();
 
   const hono = new Hono();
