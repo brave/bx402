@@ -12,7 +12,7 @@ import { facilitatorApp } from "./app.js";
 import { facilitatorConfigFromEnv, type SignerSource } from "./config.js";
 import { checkNetworks, facilitator } from "./core.js";
 import { kmsAccount } from "./kms.js";
-import { FacilitatorMetrics, measured } from "./metrics.js";
+import { FacilitatorMetrics, measured, watchBalances } from "./metrics.js";
 
 /** How long one KMS call may take, so a stalled connection cannot hang a settlement. */
 const KMS_TIMEOUT_MS = 10_000;
@@ -38,6 +38,7 @@ async function run(): Promise<void> {
 
   const metrics = new FacilitatorMetrics(config.networks);
   const hono = facilitatorApp(measured(facilitator(account, config.networks), metrics));
+  watchBalances(metrics, account.address, config.networks);
   let stopping = false;
   const server = serve(
     {

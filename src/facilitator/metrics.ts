@@ -12,6 +12,16 @@ import {
   Registry,
 } from "@prometheus-io/client";
 import type { PaymentPayload, PaymentRequirements } from "@x402/core/types";
+import {
+  type Address,
+  BaseError,
+  createPublicClient,
+  formatEther,
+  http,
+  type Transport,
+} from "viem";
+import { describe } from "../error.js";
+import { log } from "../log.js";
 import { seconds } from "../metrics.js";
 import { VERSION } from "../version.js";
 import type { Service } from "./app.js";
@@ -67,6 +77,12 @@ export class FacilitatorMetrics {
     labelNames: ["network"],
     registers: [this.registry],
   });
+  private readonly signerBalance = new Gauge({
+    name: "x402_facilitator_signer_balance_eth",
+    help: "ETH the signer holds to pay gas, by network, as of its last successful read.",
+    labelNames: ["network"],
+    registers: [this.registry],
+  });
 
   /** The networks settled on, the only ones given a label of their own. */
   private readonly networks: ReadonlySet<string>;
@@ -99,6 +115,19 @@ export class FacilitatorMetrics {
     const label = { network: this.networkLabel(network) };
     this.inFlight.inc(label);
     return () => this.inFlight.dec(label);
+  }
+
+  /**
+   * Record the signer's balance on `network`, or drop it when it could not be
+   * read, so an alert sees a missing value rather than an old one.
+   */
+  recordBalance(network: string, eth: number | undefined): void {
+    const label = { network: this.networkLabel(network) };
+    if (eth === undefined) {
+      this.signerBalance.remove(label);
+    } else {
+      this.signerBalance.set(label, eth);
+    }
   }
 
   /** Render the current values as an OpenMetrics text exposition. */
@@ -158,4 +187,51 @@ async function timed<T>(
     metrics.recordRequest(step, network, "error", seconds(started));
     throw err;
   }
+}
+
+/** How long to wait between one balance read finishing and the next starting. */
+export const BALANCE_INTERVAL_MS = 10 * 60_000;
+
+/**
+ * Read `address`'s balance on every network now and then every ten minutes, into
+ * `metrics`. The reads run on their own clients and timer, apart from any
+ * verify or settle, and a read never starts while the previous one is still
+ * running. Returns a function that stops the reads.
+ */
+export function watchBalances(
+  metrics: FacilitatorMetrics,
+  address: Address,
+  networks: SettlementNetwork[],
+  transport: (rpcUrl: string) => Transport = http,
+): () => void {
+  const clients = networks.map(({ chain, rpcUrl }) => ({
+    chain,
+    client: createPublicClient({ chain, transport: transport(rpcUrl) }),
+  }));
+  let timer: NodeJS.Timeout | undefined;
+  let stopped = false;
+  const read = async () => {
+    await Promise.all(
+      clients.map(async ({ chain, client }) => {
+        const network = networkId(chain);
+        try {
+          metrics.recordBalance(network, Number(formatEther(await client.getBalance({ address }))));
+        } catch (err) {
+          metrics.recordBalance(network, undefined);
+          // A viem error's full message includes the URL; its short message does not.
+          const reason = err instanceof BaseError ? err.shortMessage : describe(err);
+          log.warn(`reading the signer balance on ${chain.name} failed: ${reason}`);
+        }
+      }),
+    );
+    if (!stopped) {
+      // Kept off the event loop's count, so it never holds the process open.
+      timer = setTimeout(read, BALANCE_INTERVAL_MS).unref();
+    }
+  };
+  void read();
+  return () => {
+    stopped = true;
+    clearTimeout(timer);
+  };
 }
