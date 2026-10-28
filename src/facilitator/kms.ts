@@ -26,7 +26,9 @@ import { AppError, describe } from "../error.js";
  * anything else, or a key the caller cannot read, stops startup.
  *
  * It signs transactions only. A facilitator never signs messages or typed data,
- * so those refuse, and no bug elsewhere can make this key sign a permit.
+ * so those refuse, and no bug elsewhere can make this key sign a permit. Blob
+ * transactions (EIP-4844) refuse too: a facilitator never sends one, and they
+ * would need their blobs left out of the hash that gets signed.
  */
 export async function kmsAccount(client: KMSClient, keyId: string): Promise<LocalAccount> {
   let address: Address;
@@ -44,6 +46,9 @@ export async function kmsAccount(client: KMSClient, keyId: string): Promise<Loca
     signMessage: transactionsOnly,
     signTypedData: transactionsOnly,
     signTransaction: async (transaction, options) => {
+      if (transaction.type === "eip4844") {
+        throw new Error("the facilitator key does not sign blob transactions");
+      }
       const serializer = options?.serializer ?? serializeTransaction;
       const hash = keccak256(await serializer(transaction));
       return serializer(transaction, await signHash(client, keyId, address, hash));
