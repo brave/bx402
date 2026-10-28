@@ -19,25 +19,25 @@
   },
   "dependencies": {
     "@aws-sdk/client-kms": "3.1156.0",
-    "@aws-sdk/client-s3": "^3.1127.0",
+    "@aws-sdk/client-s3": "3.1148.0",
     "@coinbase/x402": "2.1.0",
-    "@hono/node-server": "^2.1.1",
-    "@prometheus-io/client": "^0.16.1",
-    "@smithy/node-http-handler": "^4.12.1",
-    "@x402/core": "^2.28.0",
-    "@x402/evm": "^2.28.0",
-    "hono": "^4.13.7",
+    "@hono/node-server": "2.1.1",
+    "@prometheus-io/client": "0.16.1",
+    "@smithy/node-http-handler": "4.12.1",
+    "@x402/core": "2.28.0",
+    "@x402/evm": "2.28.0",
+    "hono": "4.13.14",
     "mppx": "0.9.2",
     "ox": "0.14.44",
-    "undici": "^8.10.2",
-    "viem": "^2.56.3"
+    "undici": "8.12.3",
+    "viem": "2.56.5"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.12",
-    "@types/node": "^26.6.0",
+    "@biomejs/biome": "2.5.12",
+    "@types/node": "26.6.2",
     "@x402/extensions": "2.28.0",
-    "aws-sdk-client-mock": "^4.1.0",
-    "typescript": "^7.0.2",
-    "vitest": "^5.0.0"
+    "aws-sdk-client-mock": "4.1.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
   }
 }

@@ -175,28 +175,28 @@ importers:
         specifier: 3.1156.0
         version: 3.1156.0
       '@aws-sdk/client-s3':
-        specifier: ^3.1127.0
+        specifier: 3.1148.0
         version: 3.1148.0
       '@coinbase/x402':
         specifier: 2.1.0
         version: 2.1.0(@x402/evm@2.28.0(typescript@7.0.2))(@x402/extensions@2.28.0(typescript@7.0.2))(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)(typescript@7.0.2)
       '@hono/node-server':
-        specifier: ^2.1.1
+        specifier: 2.1.1
         version: 2.1.1(hono@4.13.14)
       '@prometheus-io/client':
-        specifier: ^0.16.1
+        specifier: 0.16.1
         version: 0.16.1
       '@smithy/node-http-handler':
-        specifier: ^4.12.1
+        specifier: 4.12.1
         version: 4.12.1
       '@x402/core':
-        specifier: ^2.28.0
+        specifier: 2.28.0
         version: 2.28.0
       '@x402/evm':
-        specifier: ^2.28.0
+        specifier: 2.28.0
         version: 2.28.0(typescript@7.0.2)
       hono:
-        specifier: ^4.13.7
+        specifier: 4.13.14
         version: 4.13.14
       mppx:
         specifier: 0.9.2
@@ -205,29 +205,29 @@ importers:
         specifier: 0.14.44
         version: 0.14.44(typescript@7.0.2)(zod@4.5.4)
       undici:
-        specifier: ^8.10.2
+        specifier: 8.12.3
         version: 8.12.3
       viem:
-        specifier: ^2.56.3
+        specifier: 2.56.5
         version: 2.56.5(typescript@7.0.2)(zod@4.5.4)
     devDependencies:
       '@biomejs/biome':
-        specifier: ^2.5.12
+        specifier: 2.5.12
         version: 2.5.12
       '@types/node':
-        specifier: ^26.6.0
+        specifier: 26.6.2
         version: 26.6.2
       '@x402/extensions':
         specifier: 2.28.0
         version: 2.28.0(typescript@7.0.2)
       aws-sdk-client-mock:
-        specifier: ^4.1.0
+        specifier: 4.1.0
         version: 4.1.0
       typescript:
-        specifier: ^7.0.2
+        specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: ^5.0.0
+        specifier: 5.0.5
         version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.2)(vite@8.3.5(@types/node@26.6.2))
 
 packages:
