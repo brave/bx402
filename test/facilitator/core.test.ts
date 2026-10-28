@@ -1,8 +1,15 @@
+import { HTTPFacilitatorClient } from "@x402/core/http";
 import { custom, type Hex, http, parseTransaction } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base, baseSepolia } from "viem/chains";
-import { describe, expect, it } from "vitest";
-import { checkNetworks, facilitator, settlementClient } from "../../src/facilitator/core.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  checkNetworks,
+  facilitator,
+  RECEIPT_TIMEOUT_MS,
+  settlementClient,
+  settlementSigner,
+} from "../../src/facilitator/core.js";
 
 const account = privateKeyToAccount(`0x${"11".repeat(32)}`);
 
@@ -75,6 +82,48 @@ describe("settlementClient", () => {
     await expect(send()).rejects.toThrow();
     await send();
     expect(broadcasts).toEqual([5]);
+  });
+});
+
+describe("settlementSigner", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("gives_up_on_a_receipt_after_the_timeout", async () => {
+    vi.useFakeTimers();
+    // A chain that never mines the transaction.
+    const transport = custom(
+      {
+        async request({ method }) {
+          if (method === "eth_chainId") return `0x${baseSepolia.id.toString(16)}`;
+          if (method === "eth_blockNumber") return "0x1";
+          if (method === "eth_getTransactionReceipt" || method === "eth_getTransactionByHash") {
+            return null;
+          }
+          throw new Error(`unexpected ${method}`);
+        },
+      },
+      { retryCount: 0 },
+    );
+    const signer = settlementSigner(account, baseSepolia, transport);
+    let settled = false;
+    const waiting = signer
+      .waitForTransactionReceipt({ hash: `0x${"ab".repeat(32)}` })
+      .finally(() => {
+        settled = true;
+      });
+    waiting.catch(() => {});
+
+    await vi.advanceTimersByTimeAsync(RECEIPT_TIMEOUT_MS - 1_000);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await expect(waiting).rejects.toThrow(/Timed out/);
+  });
+
+  it("gives_up_before_a_resource_server_stops_waiting", () => {
+    const client = new HTTPFacilitatorClient({ url: "http://facilitator.invalid" });
+    expect(RECEIPT_TIMEOUT_MS).toBeLessThan(client.timeoutMs);
   });
 });
 
