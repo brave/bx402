@@ -18,7 +18,7 @@ import { expect } from "vitest";
 import { app } from "../src/app.js";
 import type { Config } from "../src/config.js";
 import { type Context, context } from "../src/dispatch.js";
-import { Metrics } from "../src/metrics.js";
+import { Metrics, type MetricsSource } from "../src/metrics.js";
 import { challenge as mppChallenge, client as mppClient } from "../src/mpp.js";
 import { RestrictedAddressScreener } from "../src/screener.js";
 import {
@@ -74,13 +74,13 @@ export async function testClientOver(facilitator: FacilitatorClient): Promise<X4
  * tests in every file that records, so each assertion names only the series it
  * cares about.
  */
-export async function assertRecorded(metrics: Metrics, series: string): Promise<void> {
+export async function assertRecorded(metrics: MetricsSource, series: string): Promise<void> {
   const exposition = await metrics.render();
   expect(exposition, `missing \`${series}\` in:\n${exposition}`).toContain(series);
 }
 
 /** The inverse of `assertRecorded`, for proving something was never recorded. */
-export async function assertNotRecorded(metrics: Metrics, fragment: string): Promise<void> {
+export async function assertNotRecorded(metrics: MetricsSource, fragment: string): Promise<void> {
   const exposition = await metrics.render();
   expect(exposition, `unexpected \`${fragment}\` in:\n${exposition}`).not.toContain(fragment);
 }
