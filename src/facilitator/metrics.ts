@@ -12,20 +12,13 @@ import {
   Registry,
 } from "@prometheus-io/client";
 import type { PaymentPayload, PaymentRequirements } from "@x402/core/types";
-import {
-  type Address,
-  BaseError,
-  createPublicClient,
-  formatEther,
-  http,
-  type Transport,
-} from "viem";
-import { describe } from "../error.js";
+import { type Address, createPublicClient, formatEther, http, type Transport } from "viem";
 import { log } from "../log.js";
 import { seconds } from "../metrics.js";
 import { VERSION } from "../version.js";
 import type { Service } from "./app.js";
 import { networkId, type SettlementNetwork } from "./config.js";
+import { rpcFailure } from "./core.js";
 
 /**
  * Buckets for the time to answer, in seconds. A settlement waits for its
@@ -218,9 +211,7 @@ export function watchBalances(
           metrics.recordBalance(network, Number(formatEther(await client.getBalance({ address }))));
         } catch (err) {
           metrics.recordBalance(network, undefined);
-          // A viem error's full message includes the URL; its short message does not.
-          const reason = err instanceof BaseError ? err.shortMessage : describe(err);
-          log.warn(`reading the signer balance on ${chain.name} failed: ${reason}`);
+          log.warn(`reading the signer balance on ${chain.name} failed: ${rpcFailure(err)}`);
         }
       }),
     );

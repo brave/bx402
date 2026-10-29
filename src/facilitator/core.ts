@@ -145,9 +145,7 @@ export async function checkNetworks(
           errorInstance: new Error(`no answer in ${CHECK_TIMEOUT_MS / 1000} seconds`),
         },
       ).catch((err: unknown) => {
-        // A viem error's full message includes the URL; its short message does not.
-        const reason = err instanceof BaseError ? err.shortMessage : describe(err);
-        throw AppError.invalidConfig(`${chain.name} RPC: ${reason}`);
+        throw AppError.invalidConfig(`${chain.name} RPC: ${rpcFailure(err)}`);
       });
       if (chainId !== chain.id) {
         throw AppError.invalidConfig(
@@ -159,4 +157,14 @@ export async function checkNetworks(
       }
     }),
   );
+}
+
+/**
+ * Why an RPC call failed, without naming the RPC, whose URL may carry a provider
+ * key. A viem error's full message includes the URL, and `describe` adds the
+ * causes, where a DNS failure names the host. A viem error's short message has
+ * neither.
+ */
+export function rpcFailure(err: unknown): string {
+  return err instanceof BaseError ? err.shortMessage : describe(err);
 }
