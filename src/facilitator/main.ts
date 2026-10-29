@@ -1,5 +1,4 @@
 import { KMSClient } from "@aws-sdk/client-kms";
-import { serve } from "@hono/node-server";
 import { NodeHttpHandler } from "@smithy/node-http-handler";
 import type { LocalAccount } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -7,6 +6,7 @@ import { loadDotEnv } from "../env.js";
 import { describe } from "../error.js";
 import { exitAfterLogs, initLogging, log } from "../log.js";
 import { serveMetrics } from "../metrics.js";
+import { serveUntilStopped } from "../serve.js";
 import { VERSION } from "../version.js";
 import { facilitatorApp } from "./app.js";
 import { facilitatorConfigFromEnv, type SignerSource } from "./config.js";
@@ -39,46 +39,11 @@ async function run(): Promise<void> {
   const metrics = new FacilitatorMetrics(config.networks);
   const hono = facilitatorApp(measured(facilitator(account, config.networks), metrics));
   watchBalances(metrics, account.address, config.networks);
-  let stopping = false;
-  const server = serve(
-    {
-      // Once stopping, every answer closes its connection, so a caller that
-      // keeps connections open sends its next request elsewhere instead of
-      // holding the stop open.
-      fetch: async (request, env) => {
-        const response = await hono.fetch(request, env);
-        if (stopping) {
-          response.headers.set("connection", "close");
-        }
-        return response;
-      },
-      hostname: "0.0.0.0",
-      port: config.port,
-    },
-    (address) => {
-      log.info(`listening on ${address.address}:${address.port}`);
-    },
-  );
 
-  // Serve until asked to stop. A failure on either listener, a port already in
-  // use above all, leaves through this promise to the single exit site below
-  // instead of crashing on an unhandled error event. On SIGTERM or SIGINT the
-  // listener stops taking requests and the ones in flight run to the end, so a
-  // restart never cuts a settlement off between sending its transaction and
-  // answering. The pod's grace period must outlast the wait for a receipt.
-  await Promise.race([
-    new Promise<void>((resolve, reject) => {
-      server.on("error", reject);
-      const stop = (signal: NodeJS.Signals) => {
-        log.info(`${signal}: finishing requests in flight`);
-        stopping = true;
-        server.close((err) => (err === undefined ? resolve() : reject(err)));
-      };
-      process.once("SIGTERM", stop);
-      process.once("SIGINT", stop);
-    }),
-    serveMetrics(metrics),
-  ]);
+  // A failure on either listener, a port already in use above all, leaves
+  // through this promise to the single exit site below. The pod's grace period
+  // must outlast the wait for a settlement's receipt.
+  await Promise.race([serveUntilStopped(hono, config.port), serveMetrics(metrics)]);
   log.info("stopped");
 }
 
