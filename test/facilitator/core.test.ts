@@ -1,5 +1,5 @@
 import { HTTPFacilitatorClient } from "@x402/core/http";
-import { custom, type Hex, http, parseTransaction } from "viem";
+import { custom, type Hex, http, keccak256, parseTransaction } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base, baseSepolia } from "viem/chains";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -33,6 +33,18 @@ describe("facilitator", () => {
   });
 });
 
+/** Sends a fixed zero-value transaction through `client`. */
+function sender(client: ReturnType<typeof settlementClient>) {
+  return () =>
+    client.sendTransaction({
+      to: account.address,
+      value: 0n,
+      gas: 21_000n,
+      maxFeePerGas: 2n,
+      maxPriorityFeePerGas: 1n,
+    });
+}
+
 /**
  * A settlement client on a chain that always reports five transactions sent
  * from the account so far. `broadcasts` holds the nonce of each transaction
@@ -59,15 +71,7 @@ function onChainWithFive(refusing = 0) {
     },
     { retryCount: 0 },
   );
-  const client = settlementClient(account, baseSepolia, transport);
-  const send = () =>
-    client.sendTransaction({
-      to: account.address,
-      value: 0n,
-      gas: 21_000n,
-      maxFeePerGas: 2n,
-      maxPriorityFeePerGas: 1n,
-    });
+  const send = sender(settlementClient(account, baseSepolia, transport));
   return { broadcasts, send };
 }
 
@@ -83,6 +87,57 @@ describe("settlementClient", () => {
     await expect(send()).rejects.toThrow();
     await send();
     expect(broadcasts).toEqual([5]);
+  });
+});
+
+/**
+ * A settlement client whose node errors on every broadcast. `lookup` answers
+ * the follow-up question of whether the node has the transaction anyway.
+ * `sent` holds each transaction the client tried to broadcast.
+ */
+function onChainThatErrorsOnSend(lookup: (hash: Hex) => unknown) {
+  const sent: Hex[] = [];
+  const transport = custom(
+    {
+      async request({ method, params }) {
+        if (method === "eth_chainId") return `0x${baseSepolia.id.toString(16)}`;
+        if (method === "eth_getTransactionCount") return "0x5";
+        if (method === "eth_sendRawTransaction") {
+          sent.push((params as [Hex])[0]);
+          throw new Error("already known");
+        }
+        if (method === "eth_getTransactionByHash") return lookup((params as [Hex])[0]);
+        throw new Error(`unexpected ${method}`);
+      },
+    },
+    { retryCount: 0 },
+  );
+  const send = sender(settlementClient(account, baseSepolia, transport));
+  return { sent, send };
+}
+
+describe("settlementClient broadcast errors", () => {
+  it("a_send_the_node_already_has_counts_as_sent", async () => {
+    const { sent, send } = onChainThatErrorsOnSend((hash) => ({ hash }));
+
+    const first = await send();
+    expect(first).toBe(keccak256(sent[0] as Hex));
+
+    // Counted as sent, so the next send takes the next nonce.
+    await send();
+    expect(sent.map((raw) => parseTransaction(raw).nonce)).toEqual([5, 6]);
+  });
+
+  it("a_send_the_node_does_not_have_keeps_its_error", async () => {
+    const { send } = onChainThatErrorsOnSend(() => null);
+    await expect(send()).rejects.toThrow(/already known/);
+  });
+
+  it("a_failed_lookup_keeps_the_send_error", async () => {
+    const { send } = onChainThatErrorsOnSend(() => {
+      throw new Error("lookup failed");
+    });
+    await expect(send()).rejects.toThrow(/already known/);
   });
 });
 
