@@ -11,6 +11,13 @@ inputs:
       X402_FACILITATOR_URL unset, for runs that disable the x402 rail.
     required: false
     default: ""
+  facilitator-private-key:
+    description: >-
+      Funded Base Sepolia key for our own facilitator. When set, the facilitator
+      is built from the Dockerfile and served on localhost:8081 before bx402
+      starts, so x402-facilitator-url can point at it. Empty starts none.
+    required: false
+    default: ""
   enabled-rails:
     description: >-
       ENABLED_RAILS value for the server. Empty leaves the variable unset,
@@ -36,6 +43,29 @@ runs:
       # Compiled here rather than shared as an artifact: the build is seconds,
       # and the service needs its dependencies installed beside it anyway.
       run: pnpm build
+    - name: Start our facilitator
+      if: inputs.facilitator-private-key != ''
+      shell: bash
+      env:
+        FACILITATOR_PRIVATE_KEY: ${{ inputs.facilitator-private-key }}
+      # Run from the image, as it is deployed, rather than with node beside
+      # bx402: both programs bind the metrics port, and the container keeps the
+      # facilitator's to itself. bx402 asks the facilitator what it supports as
+      # it starts, so this comes first. With ALLOW_TESTNET and no BASE_RPC_URL
+      # it settles on Base Sepolia alone.
+      run: |
+        docker build -q -t bx402 .
+        docker run -d --name facilitator -p 8081:8080 \
+          -e FACILITATOR_PRIVATE_KEY -e ALLOW_TESTNET=true \
+          -e BASE_SEPOLIA_RPC_URL=https://sepolia.base.org \
+          --entrypoint node bx402 dist/facilitator/main.js
+        for _ in $(seq 1 60); do
+          curl -sf -o /dev/null http://localhost:8081/health && exit 0
+          sleep 1
+        done
+        docker logs facilitator >&2
+        echo "facilitator never became healthy" >&2
+        exit 1
     - name: Start bx402
       shell: bash
       env:

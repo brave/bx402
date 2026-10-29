@@ -30,7 +30,9 @@ jobs:
       - uses: ./.github/actions/start-bx402
         with:
           brave-search-api-key: ${{ secrets.BRAVE_SEARCH_API_KEY }}
-          x402-facilitator-url: https://x402.org/facilitator
+          # Our own facilitator, started by the action from the image.
+          x402-facilitator-url: http://localhost:8081
+          facilitator-private-key: ${{ secrets.FACILITATOR_PRIVATE_KEY }}
           enabled-rails: x402
       - name: Pay for a search
         env:
@@ -46,6 +48,7 @@ jobs:
         if: failure()
         run: |
           cat server.log || true
+          docker logs facilitator || true
           cat "$RUNNER_TEMP/client/client.log" || true
           # The body the client saw, which is the only place a rejected payment
           # or a non-200 from Brave Search shows up.

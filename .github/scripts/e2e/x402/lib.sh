@@ -59,10 +59,9 @@ run_node_client() {
   PAYER_KEY="$PAYER_KEY" URL="$URL" node "./$1" 2> client.log
 }
 
-# The public testnet facilitator pays gas from one shared wallet, so its
-# settlement transaction sometimes loses a nonce race with other users' traffic
-# or hits the public RPC's rate limit. That transaction never reaches the chain,
-# so paying again with a fresh authorization is safe.
+# The facilitator settles through the public Base Sepolia RPC, which sometimes
+# rate-limits the settlement transaction. That transaction never reaches the
+# chain, so paying again with a fresh authorization is safe.
 pay_until_settled() {
   local attempt status
   for attempt in 1 2 3; do
