@@ -13,8 +13,9 @@ COPY tsconfig.json tsconfig.build.json ./
 COPY src ./src
 RUN pnpm build
 
-# Runtime stage: the compiled service, its runtime dependencies, and the CA
-# certificates it needs to reach the upstreams over TLS.
+# Runtime stage: the two compiled programs, the bx402 proxy and the x402
+# facilitator, their runtime dependencies, and the CA certificates they need to
+# reach the upstreams over TLS.
 FROM node:24-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
@@ -23,21 +24,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 WORKDIR /app
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-# Only what the service runs on; the compiler and the test tools stay behind.
+# Only what the programs run on; the compiler and the test tools stay behind.
 # The store is dropped in the same layer, or its copy of every package ships
 # too. node_modules hardlinks into it, so the files themselves survive.
 RUN pnpm install --frozen-lockfile --prod \
     && rm -rf "$(pnpm store path)" ~/.cache/node/corepack
 COPY --from=builder /app/dist ./dist
-# The buyer's guide and the service icon are served off disk at runtime;
-# without them the service refuses to start.
+# The proxy serves the buyer's guide and the service icon off disk at runtime;
+# without them it refuses to start.
 COPY llms.txt icon.png ./
 
-# Expose the traffic port and the metrics port. Only the first should ever be
-# reachable from outside the network.
+# Expose the traffic port and the metrics port, the same for both programs.
+# Only the proxy's traffic port should ever be reachable from outside the
+# network; the facilitator's is for the proxy alone.
 EXPOSE 8080
 EXPOSE 8090
 
-# Run unprivileged: the proxy needs no root and binds 8080 and 8090 (>1024)
+# Run unprivileged: neither program needs root, and both bind 8080 and 8090 (>1024)
 USER bx402
+# The proxy by default. The facilitator runs from this same image with
+# `node dist/facilitator/main.js` as its entrypoint, as compose.yaml does.
 ENTRYPOINT ["node", "dist/main.js"]
