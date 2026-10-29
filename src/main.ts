@@ -1,4 +1,3 @@
-import { serve } from "@hono/node-server";
 import { app, banner } from "./app.js";
 import { configFromEnv } from "./config.js";
 import { loadDotEnv } from "./env.js";
@@ -6,6 +5,7 @@ import { describe } from "./error.js";
 import { exitAfterLogs, initLogging, log } from "./log.js";
 import { Metrics, serveMetrics } from "./metrics.js";
 import { initScreener, statusLine } from "./screener.js";
+import { serveUntilStopped } from "./serve.js";
 
 /** Port serving public traffic. */
 const PORT = 8080;
@@ -45,24 +45,22 @@ async function run(): Promise<void> {
   log.info(`restricted address screening: ${statusLine(status)}`);
 
   const hono = await app(config, screener, metrics);
-  const server = serve({ fetch: hono.fetch, hostname: "0.0.0.0", port: PORT }, (address) => {
-    log.info(`listening on ${address.address}:${address.port}`);
-  });
 
   // Traffic and metrics are served on separate listeners, so the public port
-  // never exposes the metrics. Serve until the process is stopped; a failure on
-  // either listener, a port already in use above all, leaves through this
-  // promise to the single exit site below instead of crashing on an unhandled
-  // error event.
-  await Promise.race([
-    new Promise<never>((_resolve, reject) => {
-      server.on("error", reject);
-    }),
-    serveMetrics(metrics),
-  ]);
+  // never exposes the metrics. A failure on either listener, a port already in
+  // use above all, leaves through this promise to the single exit site below.
+  // The metrics listener keeps serving until the process exits, so scrapes
+  // still land while requests in flight finish.
+  await Promise.race([serveUntilStopped(hono, PORT), serveMetrics(metrics)]);
+  log.info("stopped");
 }
 
-run().catch((err: unknown) => {
-  log.error(describe(err));
-  exitAfterLogs(1);
-});
+run().then(
+  // Exit once the logs are out rather than wait on the metrics listener and
+  // idle sockets.
+  () => exitAfterLogs(0),
+  (err: unknown) => {
+    log.error(describe(err));
+    exitAfterLogs(1);
+  },
+);
