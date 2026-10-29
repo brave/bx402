@@ -13,7 +13,9 @@ import {
   createNonceManager,
   createPublicClient,
   createWalletClient,
+  type Hex,
   http,
+  keccak256,
   type LocalAccount,
   publicActions,
   type Transport,
@@ -76,7 +78,43 @@ export function settlementSigner(account: LocalAccount, chain: Chain, transport:
  */
 export function settlementClient(account: LocalAccount, chain: Chain, transport: Transport) {
   const sender = { ...account, nonceManager: createNonceManager({ source: jsonRpc() }) };
-  return createWalletClient({ account: sender, chain, transport }).extend(publicActions);
+  return createWalletClient({
+    account: sender,
+    chain,
+    transport: knownBroadcast(transport),
+  }).extend(publicActions);
+}
+
+/**
+ * Wrap `transport` so a broadcast that errors still counts as sent when the node
+ * already has the transaction. The node can accept a transaction and its answer
+ * still be lost, and the retry then fails with "already known" or "nonce too
+ * low", or every attempt times out. The node is asked for the transaction by its
+ * hash, and when it has it, pending or mined, the hash is returned as a normal
+ * send would. Otherwise, or when the lookup fails too, the original error stands.
+ */
+function knownBroadcast(transport: Transport): Transport {
+  return (params) => {
+    const inner = transport(params);
+    const request = (async (args, options) => {
+      try {
+        return await inner.request(args, options);
+      } catch (err) {
+        if (args.method !== "eth_sendRawTransaction") {
+          throw err;
+        }
+        const hash = keccak256((args.params as [Hex])[0]);
+        const known = await inner
+          .request({ method: "eth_getTransactionByHash", params: [hash] })
+          .catch(() => null);
+        if (!known) {
+          throw err;
+        }
+        return hash;
+      }
+    }) as typeof inner.request;
+    return { ...inner, request };
+  };
 }
 
 /**
