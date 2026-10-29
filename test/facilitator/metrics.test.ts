@@ -1,5 +1,5 @@
 import type { PaymentPayload, PaymentRequirements, SettleResponse } from "@x402/core/types";
-import { custom } from "viem";
+import { custom, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -169,6 +169,25 @@ describe("watchBalances", () => {
     await vi.advanceTimersByTimeAsync(BALANCE_INTERVAL_MS);
     await assertRecorded(recorded, `x402_facilitator_signer_balance_eth{network="${BASE}"} 1`);
     stop();
+  });
+
+  it("warns_of_a_failed_read_without_naming_the_rpc", async () => {
+    const written = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    // A closed local port, with a provider key in the path as paid RPCs carry one.
+    const rpcUrl = "http://127.0.0.1:9/v2/provider-key";
+    const stop = watchBalances(metrics(), signer, [{ chain: base, rpcUrl }], (url) =>
+      http(url, { retryCount: 0 }),
+    );
+
+    try {
+      await vi.waitFor(() => expect(written).toHaveBeenCalled());
+      const line = String(written.mock.calls[0]?.[0]);
+      expect(line).toContain("reading the signer balance on Base failed: HTTP request failed.");
+      expect(line).not.toContain("provider-key");
+    } finally {
+      stop();
+      written.mockRestore();
+    }
   });
 
   it("stops_reading_once_stopped", async () => {
