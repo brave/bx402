@@ -21,7 +21,7 @@
     "@aws-sdk/client-kms": "3.1156.0",
     "@aws-sdk/client-s3": "3.1148.0",
     "@coinbase/x402": "2.1.0",
-    "@hono/node-server": "2.1.1",
+    "@hono/node-server": "2.1.5",
     "@prometheus-io/client": "0.16.1",
     "@smithy/node-http-handler": "4.12.1",
     "@x402/core": "2.28.0",
