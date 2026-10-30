@@ -1,4 +1,4 @@
-FROM node:24-slim AS builder
+FROM node:26-slim AS builder
 
 WORKDIR /app
 RUN corepack enable
@@ -16,7 +16,7 @@ RUN pnpm build
 # Runtime stage: the two compiled programs, the bx402 proxy and the x402
 # facilitator, their runtime dependencies, and the CA certificates they need to
 # reach the upstreams over TLS.
-FROM node:24-slim
+FROM node:26-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --no-create-home --uid 10001 bx402
