@@ -9,9 +9,9 @@
       "groupName": "x402"
     },
     {
-      "description": "viem is built against one exact ox, and pnpm-workspace.yaml holds the tree at that ox. Updating either alone breaks the build, so they come in one PR, where ox is set to the version the new viem depends on.",
-      "matchPackageNames": ["viem", "ox"],
-      "groupName": "viem and ox"
+      "description": "viem and mppx are each built against one exact ox, and pnpm-workspace.yaml holds the tree at that ox. mppx also needs a minimum viem. Updating any one alone breaks the build, so they come in one PR, where ox is set to the version the new viem and mppx depend on.",
+      "matchPackageNames": ["viem", "ox", "mppx"],
+      "groupName": "viem, ox and mppx"
     }
   ]
 }
