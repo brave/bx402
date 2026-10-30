@@ -200,16 +200,16 @@ importers:
         version: 4.13.14
       mppx:
         specifier: 0.13.6
-        version: 0.13.6(@x402/core@2.28.0)(hono@4.13.14)(typescript@7.0.2)(viem@2.57.3(typescript@7.0.2)(zod@4.6.7))
+        version: 0.13.6(@x402/core@2.28.0)(hono@4.13.14)(typescript@7.0.2)(viem@2.57.3(typescript@7.0.2)(zod@3.25.76))
       ox:
         specifier: 0.14.45
-        version: 0.14.45(typescript@7.0.2)(zod@4.6.7)
+        version: 0.14.45(typescript@7.0.2)(zod@3.25.76)
       undici:
         specifier: 8.12.3
         version: 8.12.3
       viem:
         specifier: 2.57.3
-        version: 2.57.3(typescript@7.0.2)(zod@4.6.7)
+        version: 2.57.3(typescript@7.0.2)(zod@3.25.76)
     devDependencies:
       '@biomejs/biome':
         specifier: 2.5.12
@@ -2069,11 +2069,11 @@ snapshots:
       '@noble/hashes': 1.8.0
       apg-js: 4.4.0
 
-  '@signinwithethereum/siwe@4.2.1(viem@2.57.3(typescript@7.0.2)(zod@4.6.7))':
+  '@signinwithethereum/siwe@4.2.1(viem@2.57.3(typescript@7.0.2)(zod@3.25.76))':
     dependencies:
       '@signinwithethereum/siwe-parser': 4.2.1
     optionalDependencies:
-      viem: 2.57.3(typescript@7.0.2)(zod@4.6.7)
+      viem: 2.57.3(typescript@7.0.2)(zod@3.25.76)
 
   '@sinonjs/commons@3.0.1':
     dependencies:
@@ -2667,7 +2667,7 @@ snapshots:
     dependencies:
       '@noble/curves': 1.9.1
       '@scure/base': 1.2.6
-      '@signinwithethereum/siwe': 4.2.1(viem@2.57.3(typescript@7.0.2)(zod@4.6.7))
+      '@signinwithethereum/siwe': 4.2.1(viem@2.57.3(typescript@7.0.2)(zod@3.25.76))
       '@x402/core': 2.28.0
       ajv: 8.20.0
       jose: 5.10.0
@@ -2958,13 +2958,13 @@ snapshots:
     dependencies:
       mime-db: 1.52.0
 
-  mppx@0.13.6(@x402/core@2.28.0)(hono@4.13.14)(typescript@7.0.2)(viem@2.57.3(typescript@7.0.2)(zod@4.6.7)):
+  mppx@0.13.6(@x402/core@2.28.0)(hono@4.13.14)(typescript@7.0.2)(viem@2.57.3(typescript@7.0.2)(zod@3.25.76)):
     dependencies:
       '@stripe/stripe-js': 9.17.0
       eventsource-parser: 4.1.1
       ox: 0.14.45(typescript@7.0.2)(zod@4.6.7)
       structured-headers: 2.1.0
-      viem: 2.57.3(typescript@7.0.2)(zod@4.6.7)
+      viem: 2.57.3(typescript@7.0.2)(zod@3.25.76)
       zod: 4.6.7
     optionalDependencies:
       '@x402/core': 2.28.0
@@ -3132,23 +3132,6 @@ snapshots:
       abitype: 1.2.3(typescript@7.0.2)(zod@3.25.76)
       isows: 1.0.7(ws@8.21.0)
       ox: 0.14.45(typescript@7.0.2)(zod@3.25.76)
-      ws: 8.21.0
-    optionalDependencies:
-      typescript: 7.0.2
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-      - zod
-
-  viem@2.57.3(typescript@7.0.2)(zod@4.6.7):
-    dependencies:
-      '@noble/curves': 1.9.1
-      '@noble/hashes': 1.8.0
-      '@scure/bip32': 1.7.0
-      '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@7.0.2)(zod@4.6.7)
-      isows: 1.0.7(ws@8.21.0)
-      ox: 0.14.45(typescript@7.0.2)(zod@4.6.7)
       ws: 8.21.0
     optionalDependencies:
       typescript: 7.0.2
