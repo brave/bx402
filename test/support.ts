@@ -317,7 +317,7 @@ export async function credentialHeader(payload: unknown): Promise<string> {
     throw new Error("the test config enables the MPP rail");
   }
   mockTempoRpc(TEST_CHAIN_ID);
-  const built = await mppClient(config.mpp, config.allowTestnet);
+  const built = await mppClient(config.mpp);
   const advertised = await mppChallenge(built, WEB_SEARCH_PATH);
   if (advertised === undefined) {
     throw new Error("the challenge builds");

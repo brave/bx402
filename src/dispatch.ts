@@ -83,7 +83,7 @@ export async function context(
     config.x402 === undefined ? undefined : await x402.start(config.x402, config.allowTestnet);
   return {
     x402: x402Client,
-    mpp: config.mpp === undefined ? undefined : await mpp.client(config.mpp, config.allowTestnet),
+    mpp: config.mpp === undefined ? undefined : await mpp.client(config.mpp),
     screener,
     metrics,
   };

@@ -172,20 +172,15 @@ export interface Client {
  * Build the MPP client from the rail's settings.
  *
  * The chain is whatever the endpoint reports at startup, never guessed from the
- * URL. An unsupported chain is refused, and a testnet is served only when
- * testnets are allowed. An unreachable endpoint or an unusable `MPP_SECRET_KEY`
- * is a startup misconfiguration.
+ * URL, so the endpoint alone decides which network is served. An unsupported
+ * chain is refused. An unreachable endpoint or an unusable `MPP_SECRET_KEY` is
+ * a startup misconfiguration.
  */
-export async function client(rail: MppConfig, allowTestnet: boolean): Promise<Client> {
+export async function client(rail: MppConfig): Promise<Client> {
   const chainId = await getChainId(rail.rpcUrl);
   const network = NETWORKS.get(chainId);
   if (network === undefined) {
     throw AppError.invalidConfig(`MPP: unsupported Tempo chain ${chainId}`);
-  }
-  if (network.testnet && !allowTestnet) {
-    throw AppError.invalidConfig(
-      `MPP_RPC_URL: chain ${chainId} is a testnet; set ALLOW_TESTNET=true to accept it`,
-    );
   }
   const misscaled = network.tokens.find((accepted) => accepted.decimals !== CURRENCY_DECIMALS);
   if (misscaled !== undefined) {

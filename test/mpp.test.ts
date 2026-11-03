@@ -10,6 +10,7 @@ import {
   credential,
   handle,
   offers,
+  servesTestnet,
   signerAddress,
   transactionPayload,
 } from "../src/mpp.js";
@@ -60,7 +61,7 @@ function mppRail(config: Config): MppConfig {
  */
 async function clientOn(config: Config, chain: number) {
   mockTempoRpc(chain);
-  return client(mppRail(config), config.allowTestnet);
+  return client(mppRail(config));
 }
 
 /**
@@ -98,17 +99,18 @@ describe("mpp", () => {
     // Both die in the startup chain query, the first step of the build.
     for (const endpoint of ["not a url", "http://127.0.0.1:1"]) {
       const rail = { ...mppRail(testConfig()), rpcUrl: endpoint };
-      await expect(client(rail, true), `case: ${endpoint}`).rejects.toThrow(
-        "invalid configuration",
-      );
+      await expect(client(rail), `case: ${endpoint}`).rejects.toThrow("invalid configuration");
     }
   });
 
-  it("a_testnet_chain_requires_the_testnet_flag", async () => {
-    const config = testConfig({ allowTestnet: false });
-    await expect(clientOn(config, MODERATO)).rejects.toThrow("ALLOW_TESTNET");
-    // Mainnet needs no flag.
-    await expect(clientOn(config, MAINNET)).resolves.toBeDefined();
+  it("serves_whichever_known_chain_the_endpoint_reports", async () => {
+    // The endpoint alone decides the network, testnet or not.
+    for (const chain of [MODERATO, MAINNET]) {
+      expect(servesTestnet(await clientOn(testConfig(), chain)), `chain ${chain}`).toBe(
+        chain === MODERATO,
+      );
+      restoreNetwork();
+    }
   });
 
   it("challenge_advertises_the_charge_credentials_answer", async () => {

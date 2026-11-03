@@ -88,14 +88,12 @@ No facilitator here: the server talks to a Tempo RPC endpoint directly, and
 verifying an MPP credential is what settles it. Only the payer needs funding.
 
 1. Write the config to `.env` and start the server (`ENABLED_RAILS=mpp` runs the MPP
-   rail alone, so no facilitator config is needed; `ALLOW_TESTNET` is required because
-   Moderato is a testnet):
+   rail alone, so no facilitator config is needed):
    ```sh
    echo "BRAVE_SEARCH_API_KEY=<your-key>" >> .env
    echo "ENABLED_RAILS=mpp" >> .env
    echo "MPP_RPC_URL=https://rpc.moderato.tempo.xyz" >> .env
    echo "MPP_SECRET_KEY=$(openssl rand -hex 32)" >> .env
-   echo "ALLOW_TESTNET=true" >> .env
    pnpm install && pnpm build && pnpm start
    ```
 2. Create a throwaway payer and fund it from the faucet RPC method:
