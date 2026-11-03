@@ -34,11 +34,3 @@ export function requireVar(env: NodeJS.ProcessEnv, name: string): string {
   }
   return value;
 }
-
-/**
- * Read `ALLOW_TESTNET`: only `true` permits testnet networks. One reader for
- * every program, so they can never disagree on whether faucet money is accepted.
- */
-export function allowTestnetFromEnv(env: NodeJS.ProcessEnv): boolean {
-  return env.ALLOW_TESTNET === "true";
-}

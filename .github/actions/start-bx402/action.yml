@@ -51,12 +51,12 @@ runs:
       # Run from the image, as it is deployed, rather than with node beside
       # bx402: both programs bind the metrics port, and the container keeps the
       # facilitator's to itself. bx402 asks the facilitator what it supports as
-      # it starts, so this comes first. With ALLOW_TESTNET and no BASE_RPC_URL
-      # it settles on Base Sepolia alone.
+      # it starts, so this comes first. Given only a Base Sepolia RPC, it
+      # settles on Base Sepolia alone.
       run: |
         docker build -q -t bx402 .
         docker run -d --name facilitator -p 8081:8080 \
-          -e FACILITATOR_PRIVATE_KEY -e ALLOW_TESTNET=true \
+          -e FACILITATOR_PRIVATE_KEY \
           -e BASE_SEPOLIA_RPC_URL=https://sepolia.base.org \
           --entrypoint node bx402 dist/facilitator/main.js
         for _ in $(seq 1 60); do

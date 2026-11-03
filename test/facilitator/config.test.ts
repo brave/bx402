@@ -48,17 +48,28 @@ describe("facilitator config", () => {
     }
   });
 
-  it("settles_on_base_and_on_base_sepolia_only_with_allow_testnet", () => {
-    expect(errorFor({ FACILITATOR_KMS_KEY_ID: "key-id" })).toMatch(/BASE_RPC_URL/);
-
-    const testnet = { ...RPC, FACILITATOR_KMS_KEY_ID: "key-id", ALLOW_TESTNET: "true" };
-    expect(errorFor(testnet)).toMatch(/BASE_SEPOLIA_RPC_URL/);
+  it("settles_on_each_network_given_an_rpc_and_needs_at_least_one", () => {
+    expect(errorFor({ FACILITATOR_KMS_KEY_ID: "key-id" })).toMatch(
+      /BASE_RPC_URL or BASE_SEPOLIA_RPC_URL/,
+    );
     expect(
-      facilitatorConfigFromEnv({ ...testnet, BASE_SEPOLIA_RPC_URL: "https://sepolia.example" })
-        .networks,
+      facilitatorConfigFromEnv({
+        ...RPC,
+        FACILITATOR_KMS_KEY_ID: "key-id",
+        BASE_SEPOLIA_RPC_URL: "https://sepolia.example",
+      }).networks,
     ).toEqual([
       { chain: base, rpcUrl: "https://base.example" },
       { chain: baseSepolia, rpcUrl: "https://sepolia.example" },
+    ]);
+  });
+
+  it("ignores_allow_testnet", () => {
+    // Only the RPC endpoints decide the networks, so the flag neither adds Base
+    // Sepolia nor makes its endpoint required.
+    const env = { ...RPC, FACILITATOR_KMS_KEY_ID: "key-id", ALLOW_TESTNET: "true" };
+    expect(facilitatorConfigFromEnv(env).networks).toEqual([
+      { chain: base, rpcUrl: "https://base.example" },
     ]);
   });
 
@@ -77,7 +88,6 @@ describe("facilitator config", () => {
     expect(
       facilitatorConfigFromEnv({
         FACILITATOR_PRIVATE_KEY: KEY,
-        ALLOW_TESTNET: "true",
         BASE_SEPOLIA_RPC_URL: "https://sepolia.example",
       }).networks,
     ).toEqual([{ chain: baseSepolia, rpcUrl: "https://sepolia.example" }]);

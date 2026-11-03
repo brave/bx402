@@ -5,7 +5,7 @@
 
 import type { Chain } from "viem";
 import { base, baseSepolia } from "viem/chains";
-import { allowTestnetFromEnv, optionalVar, requireVar } from "../env.js";
+import { optionalVar } from "../env.js";
 import { AppError } from "../error.js";
 
 /**
@@ -31,10 +31,7 @@ export function networkId(chain: Chain): `eip155:${number}` {
 export interface FacilitatorConfig {
   /** The key that signs settlement transactions. */
   signer: SignerSource;
-  /**
-   * The networks to settle on: Base mainnet, and Base Sepolia when testnets are
-   * allowed. Never empty.
-   */
+  /** The networks to settle on: each one given an RPC endpoint. Never empty. */
   networks: SettlementNetwork[];
   /** The port serving the HTTP API. */
   port: number;
@@ -49,26 +46,22 @@ const DEFAULT_PORT = 8080;
  * - `FACILITATOR_KMS_KEY_ID`: AWS KMS key that signs settlements.
  * - `FACILITATOR_PRIVATE_KEY`: a raw private key instead. Exactly one of the two
  *   must be set.
- * - `BASE_RPC_URL` (required without `ALLOW_TESTNET`): Base mainnet RPC
- *   endpoint. With `ALLOW_TESTNET` it is optional, and Base mainnet is settled
- *   on only when it is set, so a testnet run needs no mainnet funds.
- * - `BASE_SEPOLIA_RPC_URL` (required with `ALLOW_TESTNET`): Base Sepolia RPC endpoint.
- * - `ALLOW_TESTNET` (optional): `true` also settles on Base Sepolia.
+ * - `BASE_RPC_URL`: Base mainnet RPC endpoint. Base is settled on only when set.
+ * - `BASE_SEPOLIA_RPC_URL`: Base Sepolia RPC endpoint. Base Sepolia is settled
+ *   on only when set. At least one of the two must be set.
  * - `FACILITATOR_PORT` (optional): port for the HTTP API, 8080 by default. `0`
  *   picks a free one.
  */
 export function facilitatorConfigFromEnv(env: NodeJS.ProcessEnv = process.env): FacilitatorConfig {
   const signer = signerFromEnv(env);
-  const testnet = allowTestnetFromEnv(env);
-  const baseRpcUrl = testnet ? optionalVar(env, "BASE_RPC_URL") : requireVar(env, "BASE_RPC_URL");
-  return {
-    signer,
-    networks: [
-      ...(baseRpcUrl === undefined ? [] : [{ chain: base, rpcUrl: baseRpcUrl }]),
-      ...(testnet ? [{ chain: baseSepolia, rpcUrl: requireVar(env, "BASE_SEPOLIA_RPC_URL") }] : []),
-    ],
-    port: portFromEnv(env),
-  };
+  const networks = [
+    { chain: base, rpcUrl: optionalVar(env, "BASE_RPC_URL") },
+    { chain: baseSepolia, rpcUrl: optionalVar(env, "BASE_SEPOLIA_RPC_URL") },
+  ].flatMap(({ chain, rpcUrl }) => (rpcUrl === undefined ? [] : [{ chain, rpcUrl }]));
+  if (networks.length === 0) {
+    throw AppError.missingConfig("BASE_RPC_URL or BASE_SEPOLIA_RPC_URL");
+  }
+  return { signer, networks, port: portFromEnv(env) };
 }
 
 /** Read the signing key, exactly one of the two kinds. Errors never repeat the key. */

@@ -35,7 +35,6 @@ services:
     environment:
       FACILITATOR_PRIVATE_KEY: ${FACILITATOR_PRIVATE_KEY:-}
       BASE_SEPOLIA_RPC_URL: ${BASE_SEPOLIA_RPC_URL:-https://sepolia.base.org}
-      ALLOW_TESTNET: "true"
     healthcheck:
       # The image has Node and no curl.
       test:

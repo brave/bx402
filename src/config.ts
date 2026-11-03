@@ -2,7 +2,7 @@
  * Runtime configuration, read from the environment at startup.
  */
 
-import { allowTestnetFromEnv, optionalVar, requireVar } from "./env.js";
+import { optionalVar, requireVar } from "./env.js";
 import { AppError } from "./error.js";
 
 /** Default base URL when `BRAVE_SEARCH_API_BASE_URL` is unset. */
@@ -160,7 +160,7 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): Config {
         }
       : undefined,
     restrictedAddressS3Bucket: optionalVar(env, "RESTRICTED_ADDRESS_S3_BUCKET"),
-    allowTestnet: allowTestnetFromEnv(env),
+    allowTestnet: env.ALLOW_TESTNET === "true",
   };
 }
 
