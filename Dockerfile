@@ -1,12 +1,14 @@
 FROM node:26-slim AS builder
 
 WORKDIR /app
-RUN corepack enable
 
 # Dependencies first, so a source-only change reuses this layer. The workspace
 # file carries the `ox` override, without which two copies of the Tempo decoder
 # would install.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# Node ships without corepack since 25, so pnpm comes from npm, at the exact
+# version package.json's `packageManager` names.
+RUN npm install -g "$(node -p "require('./package.json').packageManager")"
 RUN pnpm install --frozen-lockfile
 
 COPY tsconfig.json tsconfig.build.json ./
@@ -22,13 +24,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && useradd --system --no-create-home --uid 10001 bx402
 
 WORKDIR /app
-RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # Only what the programs run on; the compiler and the test tools stay behind.
 # The store is dropped in the same layer, or its copy of every package ships
-# too. node_modules hardlinks into it, so the files themselves survive.
-RUN pnpm install --frozen-lockfile --prod \
-    && rm -rf "$(pnpm store path)" ~/.cache/node/corepack
+# too. node_modules hardlinks into it, so the files themselves survive. pnpm
+# itself is only needed for the install, so it goes in the same layer as well.
+RUN npm install -g "$(node -p "require('./package.json').packageManager")" \
+    && pnpm install --frozen-lockfile --prod \
+    && rm -rf "$(pnpm store path)" \
+    && npm uninstall -g pnpm \
+    && rm -rf ~/.npm
 COPY --from=builder /app/dist ./dist
 # The proxy serves the buyer's guide and the service icon off disk at runtime;
 # without them it refuses to start.
