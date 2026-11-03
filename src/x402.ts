@@ -638,7 +638,9 @@ function refusedBecause(refusal: {
     return failure.UNSPECIFIED;
   }
   const code = reason.toLowerCase();
-  if (code.includes("insufficient_funds")) {
+  // The exact EVM scheme says "insufficient_balance" for a payer short of the
+  // token, other facilitators say "insufficient_funds".
+  if (code.includes("insufficient_funds") || code.includes("insufficient_balance")) {
     return failure.INSUFFICIENT_FUNDS;
   }
   if (code.includes("valid_before") || code.includes("valid_after") || code.includes("expired")) {

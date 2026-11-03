@@ -817,6 +817,17 @@ describe("x402", () => {
       'bx402_payment_failures_total{rail="x402",step="verify",reason="invalid_payment"} 1',
     );
 
+    // A payer short of the token is refused under its own reason, whichever
+    // wording the facilitator uses.
+    for (const invalidReason of ["insufficient_funds", "invalid_exact_evm_insufficient_balance"]) {
+      const broke = await verifyAnswering(400, { isValid: false, invalidReason });
+      expect(broke.response.status, invalidReason).toBe(402);
+      await assertRecorded(
+        broke.metrics,
+        'bx402_payment_failures_total{rail="x402",step="verify",reason="insufficient_funds"} 1',
+      );
+    }
+
     // An error that carries no verdict is still the facilitator failing us.
     const failing = await verifyAnswering(503, { error: "unavailable" });
     expect(failing.response.status).toBe(502);
