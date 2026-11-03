@@ -41,7 +41,6 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     // build a handler with.
     mpp: { rpcUrl: "http://tempo.invalid", secretKey: "test-secret-of-at-least-32-bytes" },
     restrictedAddressS3Bucket: undefined,
-    allowTestnet: true,
     ...overrides,
   };
 }
@@ -55,7 +54,7 @@ export function testClient(): X402Client {
   if (config.x402 === undefined) {
     throw new Error("the test config enables the x402 rail");
   }
-  return x402Client(config.x402, config.allowTestnet);
+  return x402Client(config.x402);
 }
 
 /**
@@ -176,7 +175,7 @@ export const SETTLED: SettleResponse = {
 
 /** What the facilitator supports: the exact scheme on every network the rail can offer. */
 export const TEST_SUPPORT: SupportedResponse = {
-  kinds: [...new Set([...accepts(true).values()].flat().map((offer) => offer.network))].map(
+  kinds: [...new Set([...accepts().values()].flat().map((offer) => offer.network))].map(
     (network) => ({ x402Version: 2, scheme: "exact", network }),
   ),
   extensions: [],
@@ -185,13 +184,17 @@ export const TEST_SUPPORT: SupportedResponse = {
 
 /**
  * Stand in for the facilitator's `GET /supported`, which the x402 rail loads once
- * at startup, answered with `TEST_SUPPORT`. Call `restoreNetwork` afterwards.
+ * at startup, answered with `support`. Call `restoreNetwork` afterwards.
  */
-export function mockFacilitatorSupport(): void {
-  mockOrigin(TEST_FACILITATOR)
-    .intercept({ method: "GET", path: "/supported" })
-    .reply(200, TEST_SUPPORT);
+export function mockFacilitatorSupport(support: SupportedResponse = TEST_SUPPORT): void {
+  mockOrigin(TEST_FACILITATOR).intercept({ method: "GET", path: "/supported" }).reply(200, support);
 }
+
+/** What a facilitator settling Base mainnet alone supports, as production's does. */
+export const MAINNET_SUPPORT: SupportedResponse = {
+  ...TEST_SUPPORT,
+  kinds: TEST_SUPPORT.kinds.filter(({ network }) => network === "eip155:8453"),
+};
 
 /**
  * Stand in for `origin` on the shared mock network, for a test that stubs an
@@ -237,13 +240,13 @@ export const TEST_CHAIN_ID = 42431;
 
 /**
  * Stand in for the one call each enabled rail makes at startup: x402 asks its
- * facilitator what it supports, and MPP asks its endpoint which chain it serves,
- * answered with `chain`. A disabled rail gets no stub, which is what proves a
+ * facilitator what it supports, answered with `support`, and MPP asks its
+ * endpoint which chain it serves, answered with `chain`. A disabled rail gets no stub, which is what proves a
  * disabled rail makes no startup call.
  */
-function stubStartup(config: Config, chain = TEST_CHAIN_ID): void {
+function stubStartup(config: Config, chain = TEST_CHAIN_ID, support = TEST_SUPPORT): void {
   if (config.x402 !== undefined) {
-    mockFacilitatorSupport();
+    mockFacilitatorSupport(support);
   }
   if (config.mpp !== undefined) {
     mockTempoRpc(chain);
@@ -251,8 +254,12 @@ function stubStartup(config: Config, chain = TEST_CHAIN_ID): void {
 }
 
 /** Build the dispatch context the way a test needs it, its rails' startup calls answered. */
-export async function buildContext(config: Config, chain = TEST_CHAIN_ID): Promise<Context> {
-  stubStartup(config, chain);
+export async function buildContext(
+  config: Config,
+  chain = TEST_CHAIN_ID,
+  support = TEST_SUPPORT,
+): Promise<Context> {
+  stubStartup(config, chain, support);
   return context(config, undefined, new Metrics());
 }
 
@@ -357,9 +364,8 @@ export function paymentSignature(
   path: string,
   payload: Record<string, unknown> = {},
   accepted: Record<string, unknown> = {},
-  allowTestnet = true,
 ): string {
-  const offers = accepts(allowTestnet).get(path);
+  const offers = accepts().get(path);
   if (offers === undefined || offers[0] === undefined) {
     throw new Error(`${path} is a paid endpoint`);
   }

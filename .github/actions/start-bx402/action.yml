@@ -72,7 +72,6 @@ runs:
         BRAVE_SEARCH_API_KEY: ${{ inputs.brave-search-api-key }}
         X402_FACILITATOR_URL: ${{ inputs.x402-facilitator-url }}
         ENABLED_RAILS: ${{ inputs.enabled-rails }}
-        ALLOW_TESTNET: "true"
       run: |
         # An empty input means "not provided": the server must see the variable
         # as unset, not as an empty string (an empty ENABLED_RAILS is a startup

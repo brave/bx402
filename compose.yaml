@@ -14,8 +14,6 @@ services:
       X402_FACILITATOR_URL: ${X402_FACILITATOR_URL:-https://x402.org/facilitator}
       MPP_RPC_URL: ${MPP_RPC_URL:-https://rpc.moderato.tempo.xyz}
       MPP_SECRET_KEY: ${MPP_SECRET_KEY}
-      # The compose stack is the testnet environment. Production unsets this.
-      ALLOW_TESTNET: ${ALLOW_TESTNET:-true}
     depends_on:
       # bx402 asks the facilitator what it supports as it starts, so it waits
       # for ours when that runs. Without the profile there is nothing to wait for.

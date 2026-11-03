@@ -80,8 +80,7 @@ export interface CdpCredentials {
 export interface MppConfig {
   /**
    * Tempo RPC endpoint the MPP rail verifies and settles payments against. The
-   * chain is discovered by querying the endpoint at startup. Testnet chains
-   * require `ALLOW_TESTNET`.
+   * chain is discovered by querying the endpoint at startup.
    */
   rpcUrl: string;
   /**
@@ -109,11 +108,6 @@ export interface Config {
    * the default for local and testnet runs.
    */
   restrictedAddressS3Bucket: string | undefined;
-  /**
-   * Accept testnet networks. Off in production, so faucet-money rails never pay
-   * for real API traffic there.
-   */
-  allowTestnet: boolean;
 }
 
 /**
@@ -136,8 +130,6 @@ export interface Config {
  *   MPP challenges to this service.
  * - `BRAVE_SEARCH_API_BASE_URL` (optional): defaults to the public endpoint.
  * - `RESTRICTED_ADDRESS_S3_BUCKET` (optional): unset or empty turns screening off.
- * - `ALLOW_TESTNET` (optional): `true` permits testnet networks, with each rail
- *   deciding what that admits.
  *
  * An absent required variable throws a missing-configuration error.
  */
@@ -160,7 +152,6 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): Config {
         }
       : undefined,
     restrictedAddressS3Bucket: optionalVar(env, "RESTRICTED_ADDRESS_S3_BUCKET"),
-    allowTestnet: env.ALLOW_TESTNET === "true",
   };
 }
 

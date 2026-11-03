@@ -118,8 +118,7 @@ export function document(ctx: Context): DiscoveryDocument {
 
 /**
  * One paid path's operation: each enabled rail's offers, in the order the
- * cold `402` lists the rails, with x402's testnet-first network order kept
- * inside its slice.
+ * cold `402` lists the rails, with x402's network order kept inside its slice.
  */
 function operation(ctx: Context, endpoint: Endpoint): Operation {
   const offers = [

@@ -79,8 +79,7 @@ export async function context(
 ): Promise<Context> {
   // x402 starts first, so an unusable facilitator URL is reported before any
   // RPC traffic goes out.
-  const x402Client =
-    config.x402 === undefined ? undefined : await x402.start(config.x402, config.allowTestnet);
+  const x402Client = config.x402 === undefined ? undefined : await x402.start(config.x402);
   return {
     x402: x402Client,
     mpp: config.mpp === undefined ? undefined : await mpp.client(config.mpp),

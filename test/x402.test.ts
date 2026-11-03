@@ -31,8 +31,8 @@ import {
 } from "./support.js";
 
 /** The offers advertised for one paid path. */
-function offersFor(allowTestnet: boolean, path: string) {
-  const offers = accepts(allowTestnet).get(path);
+function offersFor(path: string) {
+  const offers = accepts().get(path);
   if (offers === undefined) {
     throw new Error(`${path} is a paid endpoint`);
   }
@@ -195,7 +195,7 @@ async function payAgainst(replies: { statusCode: number; data: object }[]) {
     REQUESTED,
     paymentHeaders({
       x402Version: 2,
-      accepted: offersFor(true, "/res/v1/web/search")[0],
+      accepted: offersFor("/res/v1/web/search")[0],
       payload: { authorization: AUTHORIZATION },
     }),
     async () => new Response(JSON.stringify({ web: {} }), { status: 200 }),
@@ -206,18 +206,13 @@ async function payAgainst(replies: { statusCode: number; data: object }[]) {
 describe("x402", () => {
   afterEach(restoreNetwork);
 
-  it("without_the_testnet_flag_only_mainnet_is_offered", () => {
-    const entries = offersFor(false, "/res/v1/web/search");
-    expect(entries).toHaveLength(1);
-    expect(entries[0]?.network).toBe("eip155:8453"); // Base mainnet
-  });
-
   it("discovery_offers_restate_the_accepts_table", () => {
-    const built = client(
-      { facilitatorUrl: "https://x402.org/facilitator", cdp: undefined, enableBazaar: true },
-      true,
-    );
-    const entries = offersFor(true, "/res/v1/web/search");
+    const built = client({
+      facilitatorUrl: "https://x402.org/facilitator",
+      cdp: undefined,
+      enableBazaar: true,
+    });
+    const entries = offersFor("/res/v1/web/search");
 
     const stated = offers(built, "/res/v1/web/search");
     expect(stated).toHaveLength(entries.length);
@@ -237,15 +232,16 @@ describe("x402", () => {
   });
 
   it("discovery_offers_are_empty_for_a_path_that_is_not_sold", () => {
-    const built = client(
-      { facilitatorUrl: "https://x402.org/facilitator", cdp: undefined, enableBazaar: true },
-      true,
-    );
+    const built = client({
+      facilitatorUrl: "https://x402.org/facilitator",
+      cdp: undefined,
+      enableBazaar: true,
+    });
     expect(offers(built, "/res/v1/answers/search")).toEqual([]);
   });
 
   it("decode_reads_the_offer_the_payer_accepted", () => {
-    const entries = offersFor(true, "/res/v1/web/search");
+    const entries = offersFor("/res/v1/web/search");
 
     const decoded = decodeReadable(
       paymentHeaders({ accepted: entries[0], payload: { authorization: AUTHORIZATION } }),
@@ -265,7 +261,7 @@ describe("x402", () => {
     // Every offer we advertise is an eip3009 transfer, so a payload lacking a
     // plausible authorization is malformed for all of them. This includes a
     // nonce of the wrong size, which must never become a replay key.
-    const entries = offersFor(true, "/res/v1/web/search");
+    const entries = offersFor("/res/v1/web/search");
     const decode = (payload: unknown) =>
       decodePayment(paymentHeaders({ accepted: entries[0], payload }), REQUESTED, true);
 
@@ -306,7 +302,7 @@ describe("x402", () => {
   });
 
   it("the_claim_key_is_the_nonce_scoped_by_the_payer", () => {
-    const entries = offersFor(true, "/res/v1/web/search");
+    const entries = offersFor("/res/v1/web/search");
 
     // The same payment under two encodings: key order differs, so the header
     // bytes differ, but both name one authorization.
@@ -330,7 +326,7 @@ describe("x402", () => {
   it("the_claim_window_is_the_offer_timeout_not_the_clients_deadline", () => {
     // A sender must not shorten how long its payment is held against
     // duplicates, so a deadline just ahead does not move the expiry.
-    const entries = offersFor(true, "/res/v1/web/search");
+    const entries = offersFor("/res/v1/web/search");
     const validBefore = String(Math.floor(Date.now() / 1000) + 3);
     const decoded = decodeReadable(
       paymentHeaders({
@@ -349,7 +345,7 @@ describe("x402", () => {
   it("decode_relays_the_resource_this_service_served_not_the_payers_claim", () => {
     // A catalog records a settled payment against the resource the payload names,
     // and the payer does not get to choose that.
-    const entries = offersFor(true, "/res/v1/web/search");
+    const entries = offersFor("/res/v1/web/search");
     const resource = relayedResource(
       decodeReadable(
         paymentHeaders({
@@ -378,7 +374,7 @@ describe("x402", () => {
   it("decode_states_the_resource_even_when_the_payer_echoed_none", () => {
     // The resource is our own account of the request, so the listing does not
     // depend on the payer having echoed one.
-    const entries = offersFor(true, "/res/v1/web/search");
+    const entries = offersFor("/res/v1/web/search");
     const resource = relayedResource(
       decodeReadable(
         paymentHeaders({ accepted: entries[0], payload: { authorization: AUTHORIZATION } }),
@@ -394,7 +390,7 @@ describe("x402", () => {
   it("decode_relays_no_resource_for_a_request_it_cannot_name", () => {
     // A facilitator tolerates a payment naming no resource, but an empty or
     // unparseable URL breaks it, so resource and declaration both drop.
-    const entries = offersFor(true, "/res/v1/web/search");
+    const entries = offersFor("/res/v1/web/search");
     const decodeFor = (requested: string) =>
       decodeReadable(
         paymentHeaders({
@@ -425,7 +421,7 @@ describe("x402", () => {
   it("decode_restates_the_declaration_the_payer_echoed", () => {
     // A payer's `routeTemplate` would steer the listing away from the path it paid
     // for, so ours goes out whatever arrived.
-    const entries = offersFor(true, "/res/v1/web/search");
+    const entries = offersFor("/res/v1/web/search");
     const decoded = decodeReadable(
       paymentHeaders({
         x402Version: 2,
@@ -451,7 +447,7 @@ describe("x402", () => {
     // A real client echoes the challenge's resource back, query string
     // included. The rail relays the decoded payload to the facilitator, so a
     // recording stand-in reads exactly what the SDK would serialize.
-    const entries = offersFor(true, "/res/v1/web/search");
+    const entries = offersFor("/res/v1/web/search");
     const forwardedFor = async (query: string) => {
       let forwarded: { resource?: { url?: string }; accepted?: unknown } | undefined;
       const built = await testClientOver({
@@ -493,7 +489,7 @@ describe("x402", () => {
   it("a_tampered_offer_matches_nothing_we_advertise", () => {
     // Here the payer grants itself a discount. The payload still decodes, so it
     // is the value comparison in `handle` that refuses it.
-    const entries = offersFor(true, "/res/v1/web/search");
+    const entries = offersFor("/res/v1/web/search");
     const discounted = { ...entries[0], amount: "1" };
 
     const decoded = decodeReadable(
@@ -509,22 +505,17 @@ describe("x402", () => {
     // while it lives, so that combination must never build.
     const cdp = { apiKeyId: "key-id", apiKeySecret: "key-secret" };
     expect(() =>
-      client({ facilitatorUrl: "https://x402.org/facilitator", cdp, enableBazaar: true }, true),
+      client({ facilitatorUrl: "https://x402.org/facilitator", cdp, enableBazaar: true }),
     ).toThrow(/api\.cdp\.coinbase\.com/);
-    expect(
-      client({ facilitatorUrl: CDP_FACILITATOR_URL, cdp, enableBazaar: true }, true),
-    ).toBeDefined();
+    expect(client({ facilitatorUrl: CDP_FACILITATOR_URL, cdp, enableBazaar: true })).toBeDefined();
   });
 
   it("cdp_credentials_sign_the_verify_call", async () => {
-    const built = client(
-      {
-        facilitatorUrl: CDP_FACILITATOR_URL,
-        enableBazaar: true,
-        cdp: { apiKeyId: "key-id", apiKeySecret: testCdpSecret() },
-      },
-      true,
-    );
+    const built = client({
+      facilitatorUrl: CDP_FACILITATOR_URL,
+      enableBazaar: true,
+      cdp: { apiKeyId: "key-id", apiKeySecret: testCdpSecret() },
+    });
 
     let authorization: string | null = null;
     mockOrigin("https://api.cdp.coinbase.com")
@@ -534,7 +525,7 @@ describe("x402", () => {
         return { statusCode: 200, data: { isValid: true } };
       });
 
-    const offer = offersFor(true, "/res/v1/web/search")[0];
+    const offer = offersFor("/res/v1/web/search")[0];
     if (offer === undefined) {
       throw new Error("the paid path offers nothing");
     }
@@ -652,10 +643,11 @@ describe("x402", () => {
     // Staging settles real payments too, but must not appear in a catalog. The
     // declaration is what makes a facilitator catalog a path, so it goes, and the
     // resource goes with it.
-    const built = client(
-      { facilitatorUrl: "https://x402.org/facilitator", cdp: undefined, enableBazaar: false },
-      true,
-    );
+    const built = client({
+      facilitatorUrl: "https://x402.org/facilitator",
+      cdp: undefined,
+      enableBazaar: false,
+    });
     const entry = challenge(built, REQUESTED, "GET");
     const { extensions } = decodeChallenge((entry as { value: string }).value) as {
       extensions: Record<string, unknown>;
@@ -669,7 +661,7 @@ describe("x402", () => {
         x402Version: 2,
         resource: { url: REQUESTED },
         extensions: { bazaar: { info: {}, schema: {} } },
-        accepted: offersFor(true, "/res/v1/web/search")[0],
+        accepted: offersFor("/res/v1/web/search")[0],
         payload: { authorization: AUTHORIZATION },
       }),
       REQUESTED,
@@ -691,7 +683,7 @@ describe("x402", () => {
       const decoded = decodeReadable(
         paymentHeaders({
           x402Version: 2,
-          accepted: offersFor(true, path)[0],
+          accepted: offersFor(path)[0],
           payload: { authorization: AUTHORIZATION },
         }),
         requested,
@@ -790,7 +782,7 @@ describe("x402", () => {
         REQUESTED,
         paymentHeaders({
           x402Version: 2,
-          accepted: offersFor(true, "/res/v1/web/search")[0],
+          accepted: offersFor("/res/v1/web/search")[0],
           payload: { authorization: AUTHORIZATION },
         }),
         async () => {
@@ -858,7 +850,7 @@ describe("x402", () => {
         REQUESTED,
         paymentHeaders({
           x402Version: 2,
-          accepted: offersFor(true, "/res/v1/web/search")[0],
+          accepted: offersFor("/res/v1/web/search")[0],
           payload: { authorization: AUTHORIZATION },
         }),
         async () => new Response(JSON.stringify({ web: {} }), { status: 200 }),
@@ -910,7 +902,7 @@ describe("x402", () => {
           REQUESTED,
           paymentHeaders({
             x402Version: 2,
-            accepted: offersFor(true, "/res/v1/web/search")[0],
+            accepted: offersFor("/res/v1/web/search")[0],
             payload: { authorization: AUTHORIZATION },
           }),
           async () => {

@@ -64,15 +64,6 @@ describe("facilitator config", () => {
     ]);
   });
 
-  it("ignores_allow_testnet", () => {
-    // Only the RPC endpoints decide the networks, so the flag neither adds Base
-    // Sepolia nor makes its endpoint required.
-    const env = { ...RPC, FACILITATOR_KMS_KEY_ID: "key-id", ALLOW_TESTNET: "true" };
-    expect(facilitatorConfigFromEnv(env).networks).toEqual([
-      { chain: base, rpcUrl: "https://base.example" },
-    ]);
-  });
-
   it("reads_the_port_and_refuses_a_malformed_one", () => {
     const env = { ...RPC, FACILITATOR_KMS_KEY_ID: "key-id" };
     expect(facilitatorConfigFromEnv({ ...env, FACILITATOR_PORT: "9090" }).port).toBe(9090);

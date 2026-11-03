@@ -175,9 +175,10 @@ for the per-endpoint price.
 | MPP  | Tempo                   | `4217`         | [`OUSD`](https://explore.tempo.xyz/token/0x20c0000000000000000000006a37DA5C996874BE), [`USDC.e`](https://explore.tempo.xyz/token/0x20c000000000000000000000b9537d11c60e8b50), [`pathUSD`](https://explore.tempo.xyz/token/0x20c0000000000000000000000000000000000000) |
 | MPP  | Moderato (testnet)      | `42431`        | [`OUSD`](https://explore.testnet.tempo.xyz/token/0x20c0000000000000000000006a37DA5C996874BE), [`USDC.e`](https://explore.testnet.tempo.xyz/token/0x20c0000000000000000000009e8d7eb59b783726), [`pathUSD`](https://explore.testnet.tempo.xyz/token/0x20c0000000000000000000000000000000000000) |
 
-`ALLOW_TESTNET=true` admits testnets. x402 then advertises the Base Sepolia offer first, so
-a client taking the first offer it supports pays with faucet money. MPP discovers its chain
-from `MPP_RPC_URL` at startup and refuses to start on a testnet without the variable.
+Each rail serves the networks its own setup names. x402 offers exactly the networks its
+facilitator supports, Base Sepolia first when it supports both, so a client taking the first
+offer it supports pays with faucet money. MPP discovers its chain from `MPP_RPC_URL` at
+startup.
 
 `ENABLED_RAILS` picks which rails the deployment serves, as a comma-separated subset of
 `x402,mpp`; unset enables both. A disabled rail's variables are not read, its challenge is

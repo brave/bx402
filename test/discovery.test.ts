@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import type { SupportedResponse } from "@x402/core/types";
 import { validate } from "mppx/discovery";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Config } from "../src/config.js";
@@ -15,24 +16,27 @@ import { VERSION } from "../src/version.js";
 import { accepts } from "../src/x402.js";
 import {
   buildContext,
+  MAINNET_SUPPORT,
   restoreNetwork,
   TEST_CHAIN_ID,
   testConfig,
   WEB_SEARCH_PATH,
 } from "./support.js";
 
-/** Tempo mainnet, for the one deployment row that refuses testnets. */
+/** Tempo mainnet, for the deployment rows that settle on mainnet alone. */
 const MAINNET = 4217;
 
 /**
  * The document a deployment with `overrides` serves, its MPP endpoint canned
- * to report `chain`. The build itself is the production path.
+ * to report `chain` and its facilitator to support `support`. The build itself
+ * is the production path.
  */
 async function documentFor(
   overrides: Partial<Config> = {},
   chain = TEST_CHAIN_ID,
+  support?: SupportedResponse,
 ): Promise<DiscoveryDocument> {
-  return document(await buildContext(testConfig(overrides), chain));
+  return document(await buildContext(testConfig(overrides), chain, support));
 }
 
 /** The offers stated for one path. */
@@ -49,16 +53,17 @@ describe("discovery", () => {
       name: string;
       overrides: Partial<Config>;
       chain?: number;
+      support?: SupportedResponse;
     }
     const deployments: Deployment[] = [
       { name: "both rails with the testnet", overrides: {} },
-      { name: "both rails mainnet only", overrides: { allowTestnet: false }, chain: MAINNET },
+      { name: "both rails mainnet only", overrides: {}, chain: MAINNET, support: MAINNET_SUPPORT },
       { name: "x402 only", overrides: { mpp: undefined } },
       { name: "mpp only", overrides: { x402: undefined } },
       { name: "no rails", overrides: { x402: undefined, mpp: undefined } },
     ];
-    for (const { name, overrides, chain } of deployments) {
-      const doc = await documentFor(overrides, chain);
+    for (const { name, overrides, chain, support } of deployments) {
+      const doc = await documentFor(overrides, chain, support);
       // Empty rather than "no errors": the only warning the validator emits
       // is for a write method without a request body, and the document
       // publishes GET alone, so a warning is a signal too.
@@ -144,7 +149,7 @@ describe("discovery", () => {
       .map((offer) => offer.currency);
     // Asserted against `accepts` rather than pasted addresses, which are
     // already pinned once in the x402 tests.
-    const advertised = (accepts(true).get(WEB_SEARCH_PATH) ?? []).map((entry) => entry.asset);
+    const advertised = (accepts().get(WEB_SEARCH_PATH) ?? []).map((entry) => entry.asset);
     expect(advertised).toHaveLength(2);
     expect(stated).toEqual(advertised);
   });
@@ -169,10 +174,10 @@ describe("discovery", () => {
   });
 
   it("the_guide_facts_come_from_the_started_rails", async () => {
-    // Allowing testnets is only permission. MPP serves whichever chain its
-    // endpoint reports, so a mainnet Tempo endpoint is not described as Moderato.
-    const facts = async (overrides: Partial<Config>, chain: number) =>
-      guideFacts(await buildContext(testConfig(overrides), chain));
+    // Each rail serves what its startup call reports: x402 the networks its
+    // facilitator supports, MPP the chain its endpoint names.
+    const facts = async (overrides: Partial<Config>, chain: number, support?: SupportedResponse) =>
+      guideFacts(await buildContext(testConfig(overrides), chain, support));
 
     expect(await facts({}, TEST_CHAIN_ID)).toEqual({
       testnet: true,
@@ -180,7 +185,7 @@ describe("discovery", () => {
       mpptestnet: true,
     });
     expect(await facts({}, MAINNET)).toEqual({ testnet: true, mpp: true, mpptestnet: false });
-    expect(await facts({ allowTestnet: false, mpp: undefined }, MAINNET)).toEqual({
+    expect(await facts({ mpp: undefined }, MAINNET, MAINNET_SUPPORT)).toEqual({
       testnet: false,
       mpp: false,
       mpptestnet: false,

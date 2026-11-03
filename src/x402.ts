@@ -118,21 +118,20 @@ export function hasPayment(headers: Headers): boolean {
 }
 
 /**
- * Build the list of payment offers we advertise and verify against. The same
- * entries seed both the cold `402` and payment verification, so there is one
- * source of truth for what we charge: real USDC on Base mainnet, plus faucet
- * USDC on Base Sepolia when the testnet is allowed.
+ * Build the list of payment offers we can make, one per network in `NETWORKS`.
+ * The same entries seed both the cold `402` and payment verification, so there
+ * is one source of truth for what we charge. Startup keeps only the ones the
+ * facilitator settles, so each deployment offers exactly the networks its
+ * facilitator is set up for.
  *
- * The order states the deployment's preference. A deployment that allows the
- * testnet leads with it, so clients that take the first offer they support pay
- * with faucet money rather than the real thing.
+ * Where a facilitator settles both, the testnet leads, so clients that take
+ * the first offer they support pay with faucet money rather than the real thing.
  */
-export function accepts(allowTestnet: boolean): Map<string, PaymentRequirements[]> {
-  const networks = NETWORKS.filter((network) => allowTestnet || !network.testnet);
+export function accepts(): Map<string, PaymentRequirements[]> {
   return new Map<string, PaymentRequirements[]>(
     ENDPOINTS.map((endpoint) => [
       endpoint.path,
-      networks.map(({ caip2 }) => {
+      NETWORKS.map(({ caip2 }) => {
         const asset = getDefaultAsset(caip2);
         return {
           scheme: "exact",
@@ -298,7 +297,7 @@ const CDP_FACILITATOR_HOST = "api.cdp.coinbase.com";
  * Build the x402 client from the rail's settings. A bad `X402_FACILITATOR_URL`
  * is a startup misconfiguration.
  */
-export function client(rail: X402Config, allowTestnet: boolean): Client {
+export function client(rail: X402Config): Client {
   let url: URL;
   try {
     // Parsed only to reject a URL we could never call; the string is passed on
@@ -325,7 +324,7 @@ export function client(rail: X402Config, allowTestnet: boolean): Client {
   }
   return {
     server: resourceServer(new HTTPFacilitatorClient(config)),
-    accepts: accepts(allowTestnet),
+    accepts: accepts(),
     claims: new ClaimStore(),
     enableBazaar: rail.enableBazaar,
   };
@@ -344,8 +343,8 @@ export function resourceServer(facilitator: FacilitatorClient): x402ResourceServ
  * so a client never picks one that verify would refuse. A facilitator that
  * cannot be reached, or settles none of our offers, stops startup.
  */
-export async function start(rail: X402Config, allowTestnet: boolean): Promise<Client> {
-  const built = client(rail, allowTestnet);
+export async function start(rail: X402Config): Promise<Client> {
+  const built = client(rail);
   try {
     await built.server.initialize();
   } catch (err) {
