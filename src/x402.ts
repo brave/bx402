@@ -88,6 +88,9 @@ const NETWORKS = [
   { caip2: "eip155:8453", chain: base, testnet: false },
 ] as const;
 
+/** The x402 protocol version our offers and payments speak. */
+const X402_VERSION = 2;
+
 /** How the advertised asset moves. Every offer we make is an EIP-3009 transfer. */
 const ASSET_TRANSFER_METHOD = "eip3009";
 
@@ -337,8 +340,9 @@ export function resourceServer(facilitator: FacilitatorClient): x402ResourceServ
 
 /**
  * Build the client and load what the facilitator supports, which the resource
- * server routes payments by. A facilitator that cannot be reached, or supports
- * nothing, stops startup.
+ * server routes payments by. Only offers the facilitator can settle are kept,
+ * so a client never picks one that verify would refuse. A facilitator that
+ * cannot be reached, or settles none of our offers, stops startup.
  */
 export async function start(rail: X402Config, allowTestnet: boolean): Promise<Client> {
   const built = client(rail, allowTestnet);
@@ -347,7 +351,21 @@ export async function start(rail: X402Config, allowTestnet: boolean): Promise<Cl
   } catch (err) {
     throw AppError.invalidConfig(`X402_FACILITATOR_URL: ${describe(err)}`);
   }
-  return built;
+  const settleable = new Map(
+    [...built.accepts].map(([path, offers]) => [
+      path,
+      offers.filter(
+        ({ network, scheme }) =>
+          built.server.getSupportedKind(X402_VERSION, network, scheme) !== undefined,
+      ),
+    ]),
+  );
+  if ([...settleable.values()].every((offers) => offers.length === 0)) {
+    throw AppError.invalidConfig(
+      "X402_FACILITATOR_URL: the facilitator settles none of the networks we offer",
+    );
+  }
+  return { ...built, accepts: settleable };
 }
 
 /**
@@ -371,7 +389,7 @@ export function challenge(
     return undefined;
   }
   const envelope = {
-    x402Version: 2,
+    x402Version: X402_VERSION,
     error: PAYMENT_REQUIRED,
     resource: catalogResource(resource, endpoint.description),
     accepts: offers,

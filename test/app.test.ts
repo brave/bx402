@@ -456,6 +456,13 @@ describe("app", () => {
     const replies: [string, { status: number; body: object } | undefined][] = [
       ["an error", { status: 503, body: { error: "unavailable" } }],
       ["nothing supported", { status: 200, body: { kinds: [] } }],
+      [
+        "none of our networks",
+        {
+          status: 200,
+          body: { kinds: [{ x402Version: 2, scheme: "exact", network: "eip155:1" }] },
+        },
+      ],
       ["no answer", undefined],
     ];
     for (const [label, reply] of replies) {
@@ -467,6 +474,31 @@ describe("app", () => {
         "X402_FACILITATOR_URL",
       );
       restoreNetwork();
+    }
+  });
+
+  it("a_cold_402_offers_only_networks_the_facilitator_settles", async () => {
+    // Testnet is allowed, so both Base networks would be offered, but this
+    // facilitator settles Base Sepolia alone. A client that picked mainnet
+    // would only be refused at verify.
+    mockOrigin(TEST_FACILITATOR)
+      .intercept({ method: "GET", path: "/supported" })
+      .reply(200, {
+        kinds: [{ x402Version: 2, scheme: "exact", network: "eip155:84532" }],
+        extensions: [],
+        signers: {},
+      });
+    const hono = await app(testConfig({ mpp: undefined }), undefined, new Metrics());
+
+    for (const endpoint of ENDPOINTS) {
+      const response = await hono.request(endpoint.path);
+      const advertised = decodeChallenge(response.headers.get("payment-required") as string) as {
+        accepts: { network: string }[];
+      };
+      expect(
+        advertised.accepts.map(({ network }) => network),
+        endpoint.path,
+      ).toEqual(["eip155:84532"]);
     }
   });
 
