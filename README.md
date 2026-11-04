@@ -35,11 +35,8 @@ This runs `bx402` in Docker against the public
 [x402.org facilitator](https://docs.x402.org/dev-tools/facilitators), which verifies each
 payment and settles it on chain. It serves testnet only and pays the settlement gas
 itself, so nothing on the Brave side needs funding. Production points
-`X402_FACILITATOR_URL` at the
-[Coinbase-hosted facilitator](https://docs.cdp.coinbase.com/x402/seller/facilitator)
-instead, with `CDP_API_KEY_ID` and `CDP_API_KEY_SECRET` set beside it; the service
-signs every facilitator call with that key and refuses to send credentials to any
-other facilitator host.
+`X402_FACILITATOR_URL` at our own facilitator instead, which settles with a key held
+in AWS KMS.
 
 | Party            | Owner | Requires            | Faucet                               |
 | ---------------- | ----- | ------------------- | ------------------------------------ |

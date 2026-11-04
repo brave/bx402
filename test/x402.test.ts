@@ -1,4 +1,3 @@
-import { generateKeyPairSync } from "node:crypto";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import type { PaymentPayload } from "@x402/core/types";
 import {
@@ -60,23 +59,6 @@ const AUTHORIZATION = {
   from: `0x${"AB".repeat(20)}`,
   nonce: `0x${"CD".repeat(32)}`,
 };
-
-/**
- * A CDP API key secret that really signs: 64 base64 bytes of Ed25519 seed plus
- * public key, the shape the CDP SDK detects and signs tokens with.
- */
-function testCdpSecret(): string {
-  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
-  const jwk = privateKey.export({ format: "jwk" }) as { d?: string };
-  const pub = publicKey.export({ format: "jwk" }) as { x?: string };
-  return Buffer.concat([
-    Buffer.from(jwk.d ?? "", "base64url"),
-    Buffer.from(pub.x ?? "", "base64url"),
-  ]).toString("base64");
-}
-
-/** The base URL of the Coinbase-hosted facilitator. */
-const CDP_FACILITATOR_URL = "https://api.cdp.coinbase.com/platform/v2/x402";
 
 /**
  * The request a payment is made against in these tests, and what it is relayed as
@@ -162,7 +144,7 @@ function undescribed(value: unknown, schema: unknown, at = "example"): string[] 
  */
 const CHALLENGE_HEADER_LIMIT = 6 * 1024;
 
-/** The body CDP sends with a settlement it sent to the chain but has not seen confirmed. */
+/** The body a facilitator sends with a settlement it sent to the chain but has not seen confirmed. */
 const PENDING = { ...SETTLED, success: false, errorReason: "settlement_pending" };
 
 /**
@@ -209,7 +191,6 @@ describe("x402", () => {
   it("discovery_offers_restate_the_accepts_table", () => {
     const built = client({
       facilitatorUrl: "https://x402.org/facilitator",
-      cdp: undefined,
       enableBazaar: true,
     });
     const entries = offersFor("/res/v1/web/search");
@@ -234,7 +215,6 @@ describe("x402", () => {
   it("discovery_offers_are_empty_for_a_path_that_is_not_sold", () => {
     const built = client({
       facilitatorUrl: "https://x402.org/facilitator",
-      cdp: undefined,
       enableBazaar: true,
     });
     expect(offers(built, "/res/v1/answers/search")).toEqual([]);
@@ -500,42 +480,6 @@ describe("x402", () => {
     expect(entries).not.toContainEqual(decoded.accepted);
   });
 
-  it("cdp_credentials_pair_only_with_the_cdp_facilitator", () => {
-    // A signed CDP token sent to any other host could be replayed against CDP
-    // while it lives, so that combination must never build.
-    const cdp = { apiKeyId: "key-id", apiKeySecret: "key-secret" };
-    expect(() =>
-      client({ facilitatorUrl: "https://x402.org/facilitator", cdp, enableBazaar: true }),
-    ).toThrow(/api\.cdp\.coinbase\.com/);
-    expect(client({ facilitatorUrl: CDP_FACILITATOR_URL, cdp, enableBazaar: true })).toBeDefined();
-  });
-
-  it("cdp_credentials_sign_the_verify_call", async () => {
-    const built = client({
-      facilitatorUrl: CDP_FACILITATOR_URL,
-      enableBazaar: true,
-      cdp: { apiKeyId: "key-id", apiKeySecret: testCdpSecret() },
-    });
-
-    let authorization: string | null = null;
-    mockOrigin("https://api.cdp.coinbase.com")
-      .intercept({ method: "POST", path: "/platform/v2/x402/verify" })
-      .reply((request) => {
-        authorization = new Headers(request.headers as Record<string, string>).get("authorization");
-        return { statusCode: 200, data: { isValid: true } };
-      });
-
-    const offer = offersFor("/res/v1/web/search")[0];
-    if (offer === undefined) {
-      throw new Error("the paid path offers nothing");
-    }
-    const result = await built.server.verifyPayment({} as PaymentPayload, offer);
-    expect(result.isValid).toBe(true);
-    // The token itself is the CDP SDK's business; what is ours is that the
-    // request went out bearing one.
-    expect(authorization).toMatch(/^Bearer .+/);
-  });
-
   it("challenge_emits_the_full_payment_required_payload", () => {
     // Every offer field is spelled out so a change to the SDK's defaults fails
     // here instead of silently moving the charge.
@@ -645,7 +589,6 @@ describe("x402", () => {
     // resource goes with it.
     const built = client({
       facilitatorUrl: "https://x402.org/facilitator",
-      cdp: undefined,
       enableBazaar: false,
     });
     const entry = challenge(built, REQUESTED, "GET");
@@ -722,7 +665,7 @@ describe("x402", () => {
   });
 
   it("a_pending_settlement_is_asked_about_once_more", async () => {
-    // CDP answers a payment it sent but has not seen confirmed with a 500. The
+    // A facilitator answers a payment it sent but has not seen confirmed with a 500. The
     // same request again makes it check that transaction rather than send another.
     const { response, settled } = await payAgainst([
       { statusCode: 500, data: PENDING },
@@ -766,7 +709,7 @@ describe("x402", () => {
   });
 
   it("a_facilitator_refusal_with_an_error_status_is_a_402", async () => {
-    // CDP refuses a payment it cannot accept with an error status and a verdict,
+    // A facilitator refuses a payment it cannot accept with an error status and a verdict,
     // which the SDK throws. That is a refused payment, not our outage.
     const verifyAnswering = async (statusCode: number, data: object) => {
       mockOrigin(TEST_FACILITATOR)
@@ -878,7 +821,7 @@ describe("x402", () => {
   });
 
   it("a_settlement_the_facilitator_refused_keeps_the_claim", async () => {
-    // CDP refuses a settlement with an error status, which the SDK throws. That is
+    // A facilitator refuses a settlement with an error status, which the SDK throws. That is
     // still a decision, so the same payment sent again must not buy another search.
     // A settle call that gets no answer at all decided nothing and stays retryable.
     const sendTwice = async (settle: { statusCode: number; data: object } | undefined) => {
