@@ -6,8 +6,6 @@
  */
 
 import { isDeepStrictEqual } from "node:util";
-import { createCdpAuthHeaders } from "@coinbase/x402";
-import type { FacilitatorConfig } from "@x402/core/http";
 import { encodePaymentRequiredHeader, encodePaymentResponseHeader } from "@x402/core/http";
 import {
   type FacilitatorClient,
@@ -288,42 +286,19 @@ export interface Client {
 }
 
 /**
- * The host CDP credentials sign for. The signed tokens name this host and the
- * CDP verify, settle, and supported paths, so they authenticate nowhere else.
- */
-const CDP_FACILITATOR_HOST = "api.cdp.coinbase.com";
-
-/**
  * Build the x402 client from the rail's settings. A bad `X402_FACILITATOR_URL`
  * is a startup misconfiguration.
  */
 export function client(rail: X402Config): Client {
-  let url: URL;
   try {
     // Parsed only to reject a URL we could never call; the string is passed on
     // as configured, so the facilitator sees exactly the base it was given.
-    url = new URL(rail.facilitatorUrl);
+    new URL(rail.facilitatorUrl);
   } catch (err) {
     throw AppError.invalidConfig(`X402_FACILITATOR_URL: ${describe(err)}`);
   }
-  // A signed CDP token sent elsewhere would let that host replay it against CDP
-  // for the token's lifetime, so credentials pair only with the CDP host.
-  if (rail.cdp !== undefined && url.host !== CDP_FACILITATOR_HOST) {
-    throw AppError.invalidConfig(
-      `CDP_API_KEY_ID is set but X402_FACILITATOR_URL does not point at ${CDP_FACILITATOR_HOST}`,
-    );
-  }
-  const config: FacilitatorConfig = { url: rail.facilitatorUrl };
-  if (rail.cdp !== undefined) {
-    // The SDK types the hook as optional but always builds one; the guard only
-    // satisfies the type checker.
-    const createAuthHeaders = createCdpAuthHeaders(rail.cdp.apiKeyId, rail.cdp.apiKeySecret);
-    if (createAuthHeaders !== undefined) {
-      config.createAuthHeaders = createAuthHeaders;
-    }
-  }
   return {
-    server: resourceServer(new HTTPFacilitatorClient(config)),
+    server: resourceServer(new HTTPFacilitatorClient({ url: rail.facilitatorUrl })),
     accepts: accepts(),
     claims: new ClaimStore(),
     enableBazaar: rail.enableBazaar,

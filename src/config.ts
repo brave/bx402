@@ -54,26 +54,10 @@ export interface X402Config {
    */
   facilitatorUrl: string;
   /**
-   * API key for the Coinbase-hosted facilitator, absent for facilitators that
-   * take no credentials. Requests carry a signed token only when this is set.
-   */
-  cdp: CdpCredentials | undefined;
-  /**
    * Whether payments carry what a facilitator's catalog needs to list the paid
    * paths. On only for a deployment that should be listed, such as production.
    */
   enableBazaar: boolean;
-}
-
-/**
- * A CDP API key. The two halves only work as a pair, so configuration carries
- * them as one value that is present or absent as a whole.
- */
-export interface CdpCredentials {
-  /** The key's identifier, named in every signed token. */
-  apiKeyId: string;
-  /** The key's signing secret. */
-  apiKeySecret: string;
 }
 
 /** Settings for the MPP rail. */
@@ -119,9 +103,6 @@ export interface Config {
  *   rail's variables are not read.
  * - `X402_FACILITATOR_URL` (required when the x402 rail is enabled): base URL of
  *   the x402 facilitator.
- * - `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET` (optional, read only when the x402
- *   rail is enabled): API key for the Coinbase-hosted facilitator, set together
- *   or not at all. Unset or empty leaves facilitator requests uncredentialed.
  * - `X402_ENABLE_BAZAAR` (optional, read only when the x402 rail is enabled):
  *   `true` lets facilitator catalogs such as the Bazaar list the paid paths.
  *   Unset or `false` keeps them out.
@@ -157,10 +138,8 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): Config {
 
 /** Read the x402 rail's settings. */
 function x402FromEnv(env: NodeJS.ProcessEnv): X402Config {
-  const cdp = cdpFromEnv(env);
   return {
     facilitatorUrl: requireVar(env, "X402_FACILITATOR_URL"),
-    cdp,
     enableBazaar: enableBazaarFromEnv(env),
   };
 }
@@ -180,21 +159,4 @@ function enableBazaarFromEnv(env: NodeJS.ProcessEnv): boolean {
   throw AppError.invalidConfig(
     `X402_ENABLE_BAZAAR: expected true or false, got ${JSON.stringify(value)}`,
   );
-}
-
-/**
- * Read the Coinbase facilitator credentials, absent when neither half is set.
- * The halves are useless alone, so one without the other is a misconfiguration,
- * not a partial credential.
- */
-function cdpFromEnv(env: NodeJS.ProcessEnv): CdpCredentials | undefined {
-  const apiKeyId = optionalVar(env, "CDP_API_KEY_ID");
-  const apiKeySecret = optionalVar(env, "CDP_API_KEY_SECRET");
-  if (apiKeyId !== undefined && apiKeySecret !== undefined) {
-    return { apiKeyId, apiKeySecret };
-  }
-  if (apiKeyId !== undefined || apiKeySecret !== undefined) {
-    throw AppError.invalidConfig("CDP_API_KEY_ID and CDP_API_KEY_SECRET must be set together");
-  }
-  return undefined;
 }

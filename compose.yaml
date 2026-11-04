@@ -9,8 +9,7 @@ services:
     environment:
       BRAVE_SEARCH_API_KEY: ${BRAVE_SEARCH_API_KEY}
       # The public testnet facilitator, or ours under the `facilitator` profile
-      # below. Production points this at the Coinbase-hosted one and sets the
-      # CDP key pair beside it.
+      # below. Production runs ours.
       X402_FACILITATOR_URL: ${X402_FACILITATOR_URL:-https://x402.org/facilitator}
       MPP_RPC_URL: ${MPP_RPC_URL:-https://rpc.moderato.tempo.xyz}
       MPP_SECRET_KEY: ${MPP_SECRET_KEY}
