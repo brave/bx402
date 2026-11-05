@@ -33,7 +33,7 @@
     "viem": "2.57.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.12",
+    "@biomejs/biome": "2.6.4",
     "@types/node": "26.6.5",
     "@x402/extensions": "2.29.0",
     "aws-sdk-client-mock": "4.1.0",
