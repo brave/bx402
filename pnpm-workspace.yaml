@@ -1,10 +1,5 @@
-# mppx and viem each pin an exact ox, and a mismatch installs two copies. Both
-# decode Tempo transactions, and the MPP rail recovers the payer address with one
-# decoder while the SDK verifies with the other. Two versions could disagree, so
-# hold the tree at a single ox, the one both currently pin. deny.toml enforces
-# the same single-version rule for tempo-primitives on the Rust side.
 overrides:
-  ox: 0.14.45
+  ox: 0.14.60
   # vite brings in postcss 8.5.28, which asks for source-map-js 1.2.1. That
   # version is flagged by pnpm audit (GHSA-68fv-2mgg-jv7q, fixed in 1.2.2) and
   # only vitest reaches it, never the service.
