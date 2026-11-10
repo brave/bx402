@@ -1,4 +1,4 @@
-import { Challenge, Credential, Receipt } from "mppx";
+import { Challenge, Credential, Errors, Receipt } from "mppx";
 import { HttpRequestError } from "viem";
 import { afterEach, describe, expect, it } from "vitest";
 import { MemoryClaimStore } from "../src/claims/memory.js";
@@ -400,6 +400,50 @@ describe("mpp", () => {
     await assertRecorded(
       metrics,
       'bx402_payment_failures_total{rail="mpp",step="claim",reason="unreachable"} 1',
+    );
+  });
+
+  it("a_replayed_transaction_is_counted_as_a_duplicate", async () => {
+    const metrics = new Metrics();
+    const response = await handle(
+      await refusingClient(
+        new Errors.CredentialReplayedError({ reason: "Transaction hash has already been used" }),
+      ),
+      undefined,
+      metrics,
+      WEB_SEARCH_PATH,
+      await payingHeaders(),
+      () => Promise.reject(new Error("the search must never run")),
+    );
+
+    // Read by the client exactly like any other refusal.
+    expect(response.status).toBe(402);
+    expect(await response.json()).toEqual({ error: "mpp payment did not verify" });
+    await assertRecorded(
+      metrics,
+      `bx402_payments_total{rail="mpp",endpoint="${WEB_SEARCH_PATH}",outcome="duplicate"} 1`,
+    );
+    await assertNotRecorded(metrics, "bx402_payment_failures_total{");
+  });
+
+  it("a_settled_transfer_bound_to_another_challenge_is_not_a_duplicate", async () => {
+    // The SDK raises the replay error here too, but only after the transfer
+    // settled, so it is a refusal with money moved and not a replay.
+    const metrics = new Metrics();
+    await handle(
+      await refusingClient(
+        new Errors.CredentialReplayedError({ reason: "memo is not bound to this challenge" }),
+      ),
+      undefined,
+      metrics,
+      WEB_SEARCH_PATH,
+      await payingHeaders(),
+      () => Promise.reject(new Error("the search must never run")),
+    );
+
+    await assertRecorded(
+      metrics,
+      `bx402_payments_total{rail="mpp",endpoint="${WEB_SEARCH_PATH}",outcome="refused"} 1`,
     );
   });
 

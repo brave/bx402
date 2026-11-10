@@ -6,7 +6,7 @@
  * classifies each request and delegates to whichever rail it is paying on.
  */
 
-import { Challenge, Credential, Receipt } from "mppx";
+import { Challenge, Credential, Errors, Receipt } from "mppx";
 import { Mppx, type Store, tempo } from "mppx/server";
 import * as Secp256k1 from "ox/Secp256k1";
 import { TxEnvelopeTempo } from "ox/tempo";
@@ -487,6 +487,8 @@ export function signerAddress(payload: TransactionPayload): string | undefined {
  *
  * - credential missing, unreadable, not a signed transaction, or rejected: `402`
  *   before anything is broadcast.
+ * - transaction already in flight or recently charged: `402`, before anything
+ *   is broadcast.
  * - the Tempo endpoint or the replay claim store unreachable: `502`, since that
  *   is our failure not the payer's.
  * - charged: the search runs and its response carries the receipt whatever its
@@ -559,6 +561,12 @@ export async function handle(
       log.error(`mpp replay claim failed: ${describe(err)}`);
       return ended(outcome.NETWORK_UNAVAILABLE, gatewayError());
     }
+    // Another request, on this replica or another, holds the transaction's
+    // claim. Refused like any other payment we decline, so a duplicate learns
+    // nothing new.
+    if (causedBy(err, claimedElsewhere)) {
+      return ended(outcome.DUPLICATE, paymentRejected());
+    }
     if (endpointUnreachable(err)) {
       metrics.recordFailure(RAIL, step.CHARGE, failure.UNREACHABLE);
       log.error(`mpp charge failed: tempo endpoint unreachable: ${describe(err)}`);
@@ -616,6 +624,18 @@ function endpointUnreachable(err: unknown): boolean {
       cause instanceof HttpRequestError ||
       cause instanceof TimeoutError ||
       cause instanceof SocketClosedError,
+  );
+}
+
+/**
+ * Whether the SDK refused a credential because its transaction is already
+ * claimed. The SDK raises the same error type when a settled transfer turns out
+ * to answer another challenge, after money moved, so the reason it gives is
+ * what tells a replay apart.
+ */
+function claimedElsewhere(cause: unknown): boolean {
+  return (
+    cause instanceof Errors.CredentialReplayedError && cause.message.includes("already been used")
   );
 }
 
