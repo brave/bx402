@@ -1,8 +1,12 @@
 import { Challenge, Credential, Errors, Receipt } from "mppx";
-import { HttpRequestError } from "viem";
+import { Attribution } from "mppx/tempo";
+import * as Secp256k1 from "ox/Secp256k1";
+import { TxEnvelopeTempo } from "ox/tempo";
+import { encodeFunctionData, HttpRequestError } from "viem";
+import { Abis } from "viem/tempo";
 import { afterEach, describe, expect, it } from "vitest";
 import { MemoryClaimStore } from "../src/claims/memory.js";
-import { ClaimStoreError } from "../src/claims/store.js";
+import { type ClaimStore, ClaimStoreError, type ClaimToken } from "../src/claims/store.js";
 import type { Config, MppConfig } from "../src/config.js";
 import { Metrics } from "../src/metrics.js";
 import type { Charge, Client } from "../src/mpp.js";
@@ -21,8 +25,10 @@ import {
   assertNotRecorded,
   assertRecorded,
   forgedTransaction,
+  mockOrigin,
   mockTempoRpc,
   restoreNetwork,
+  TEST_TEMPO_RPC,
   testConfig,
 } from "./support.js";
 
@@ -91,6 +97,106 @@ function answering(minted: Challenge.Challenge): Headers {
       }),
     ),
   });
+}
+
+/**
+ * Headers carrying a credential that pays `minted` in full: a signed transfer
+ * of the charged amount to the charged recipient, its memo bound to the
+ * challenge. The SDK accepts it up to the broadcast, so a charge driven with it
+ * goes through every check that comes before moving money.
+ */
+function paying(minted: Challenge.Challenge): Headers {
+  const { amount, currency, recipient } = minted.request as Record<string, string>;
+  const envelope = TxEnvelopeTempo.from({
+    type: "tempo",
+    chainId: MODERATO,
+    calls: [
+      {
+        to: currency as `0x${string}`,
+        data: encodeFunctionData({
+          abi: Abis.tip20,
+          functionName: "transferWithMemo",
+          args: [
+            recipient as `0x${string}`,
+            BigInt(amount as string),
+            Attribution.encode({ challengeId: minted.id, serverId: minted.realm }),
+          ],
+        }),
+      },
+    ],
+    gas: 100_000n,
+    maxFeePerGas: 1n,
+    maxPriorityFeePerGas: 1n,
+    nonce: 0n,
+  });
+  const signature = Secp256k1.sign({
+    payload: TxEnvelopeTempo.getSignPayload(envelope),
+    privateKey: Secp256k1.randomPrivateKey(),
+  });
+  return new Headers({
+    authorization: Credential.serialize(
+      Credential.from({
+        challenge: minted,
+        payload: {
+          type: "transaction",
+          signature: TxEnvelopeTempo.serialize(envelope, { signature }),
+        },
+      }),
+    ),
+  });
+}
+
+/**
+ * Queue answers from the Tempo endpoint, one per call in order: `undefined`
+ * answers a simulation with success, a string refuses the call with that
+ * message. A call past the queue finds nothing and fails as unreachable.
+ */
+function tempoAnswers(...answers: (string | undefined)[]): void {
+  for (const answer of answers) {
+    mockOrigin(TEST_TEMPO_RPC)
+      .intercept({ method: "POST", path: "/" })
+      .reply(
+        200,
+        answer === undefined
+          ? { jsonrpc: "2.0", id: 1, result: "0x" }
+          : { jsonrpc: "2.0", id: 1, error: { code: -32000, message: answer } },
+      );
+  }
+}
+
+/** A claim store that records every call the rail makes into it. */
+function recording(claims: ClaimStore): { store: ClaimStore; calls: string[] } {
+  const calls: string[] = [];
+  return {
+    calls,
+    store: {
+      tryClaim: (key: string, expires: number) => {
+        calls.push(`claim ${key}`);
+        return claims.tryClaim(key, expires);
+      },
+      release: (key: string, token: ClaimToken) => {
+        calls.push(`release ${key}`);
+        return claims.release(key, token);
+      },
+      drop: (key: string) => {
+        calls.push(`drop ${key}`);
+        return claims.drop(key);
+      },
+    },
+  };
+}
+
+/**
+ * A client charging through the SDK's own charge over a recording claim store,
+ * with headers paying its first challenge.
+ */
+async function realCharge(metrics: Metrics) {
+  const claims = new MemoryClaimStore();
+  const { store, calls } = recording(claims);
+  const built = await client(mppRail(testConfig()), store, metrics);
+  const advertised = await challenge(built, WEB_SEARCH_PATH);
+  const [minted] = Challenge.deserializeList(advertised?.value as string);
+  return { built, headers: paying(minted as Challenge.Challenge), claims, calls };
 }
 
 afterEach(() => {
@@ -543,6 +649,60 @@ describe("mpp", () => {
     );
     // The payer the signature names, counted and not recorded.
     await assertRecorded(metrics, 'bx402_distinct_payers{rail="mpp"} 1');
+  });
+
+  it("a_real_charge_claims_its_transaction_and_drops_the_claim_when_the_broadcast_fails", async () => {
+    // The SDK's own charge, not a stand in, so an SDK that starts reading or
+    // writing the store, which the store answers as unreachable, fails here.
+    const tempo = mockTempoRpc(MODERATO);
+    const metrics = new Metrics();
+    const { built, headers, calls } = await realCharge(metrics);
+    // The SDK simulates the transfer once per check (it checks twice), claims
+    // it, simulates once more, and broadcasts, which the endpoint refuses.
+    tempoAnswers(undefined, undefined, undefined, "insufficient funds for gas");
+
+    const response = await handle(built, undefined, metrics, WEB_SEARCH_PATH, headers, () =>
+      Promise.reject(new Error("the search must never run")),
+    );
+
+    expect(response.status).toBe(402);
+    await assertRecorded(
+      metrics,
+      `bx402_payments_total{rail="mpp",endpoint="${WEB_SEARCH_PATH}",outcome="refused"} 1`,
+    );
+    // Every answer used, so the refusal came from the broadcast itself.
+    expect(tempo.pendingInterceptors()).toEqual([]);
+    // Claimed under this rail before the broadcast and dropped after it failed,
+    // so the payer can retry the same transaction.
+    const [claimed] = calls;
+    expect(claimed).toMatch(/^claim mpp:/);
+    expect(calls).toEqual([claimed, claimed?.replace("claim", "drop")]);
+  });
+
+  it("a_real_charge_whose_transaction_is_claimed_elsewhere_is_a_duplicate", async () => {
+    // The first replica's claim, found by the second through the shared store.
+    mockTempoRpc(MODERATO);
+    const { built, headers, claims, calls } = await realCharge(new Metrics());
+    tempoAnswers(undefined, undefined, undefined, "insufficient funds for gas");
+    await handle(built, undefined, new Metrics(), WEB_SEARCH_PATH, headers, () =>
+      Promise.reject(new Error("the search must never run")),
+    );
+    const key = calls[0]?.replace("claim ", "") as string;
+    expect(await claims.tryClaim(key, Date.now() + 60_000)).toBeDefined();
+    // Only the two transfer checks run before the claim. Anything past it
+    // would find no answer and read as unreachable.
+    tempoAnswers(undefined, undefined);
+    const metrics = new Metrics();
+
+    const response = await handle(built, undefined, metrics, WEB_SEARCH_PATH, headers, () =>
+      Promise.reject(new Error("the search must never run")),
+    );
+
+    expect(response.status).toBe(402);
+    await assertRecorded(
+      metrics,
+      `bx402_payments_total{rail="mpp",endpoint="${WEB_SEARCH_PATH}",outcome="duplicate"} 1`,
+    );
   });
 
   it("the_sdk_store_claims_and_drops_keys_under_this_rail", async () => {
