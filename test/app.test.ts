@@ -749,8 +749,8 @@ describe("app", () => {
   it("concurrent_duplicate_payments_trigger_one_upstream_search", async () => {
     const { built, metrics } = await replayApp(true, 1);
 
-    // Each request claims its key synchronously before its first await, so
-    // exactly one wins regardless of scheduling.
+    // The store records a key once however the requests are scheduled, so
+    // exactly one wins.
     const header = paidNonce("/res/v1/web/search", `0x${"11".repeat(32)}`);
     const responses = await Promise.all(
       Array.from({ length: 5 }, () => built.request("/res/v1/web/search?q=rust", header)),

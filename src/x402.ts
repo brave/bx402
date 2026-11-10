@@ -25,7 +25,8 @@ import { findDefaultAsset, getDefaultAsset } from "@x402/evm";
 import { registerExactEvmScheme } from "@x402/evm/exact/server";
 import { base, baseSepolia } from "viem/chains";
 import type { Call } from "./calls.js";
-import { ClaimStore } from "./claims/memory.js";
+import { MemoryClaimStore } from "./claims/memory.js";
+import type { ClaimStore } from "./claims/store.js";
 import type { X402Config } from "./config.js";
 import type { Offer } from "./discovery.js";
 import { ENDPOINTS, findEndpoint, ICON_PATH } from "./endpoints.js";
@@ -278,7 +279,7 @@ export interface Client {
    * Claims over payment replay keys. A payment's key is claimed before any
    * facilitator or upstream call and held while the payment is in flight and
    * briefly after the facilitator decides on it, so one payment buys at most
-   * one search. The store's scope and bounds are documented in `claims/memory.ts`.
+   * one search. The store's scope and bounds are documented in `claims/store.ts`.
    */
   claims: ClaimStore;
   /** Whether the paid paths are offered to facilitator catalogs. */
@@ -300,7 +301,7 @@ export function client(rail: X402Config): Client {
   return {
     server: resourceServer(new HTTPFacilitatorClient({ url: rail.facilitatorUrl })),
     accepts: accepts(),
-    claims: new ClaimStore(),
+    claims: new MemoryClaimStore(),
     enableBazaar: rail.enableBazaar,
   };
 }
@@ -505,11 +506,13 @@ export async function handle(
     return ended(outcome.NO_OFFER, paymentRejected(GENERIC_REJECTION));
   }
 
-  // One payment buys one search. The key is claimed before the first await,
-  // so concurrent requests carrying the same payment are refused here before
-  // they reach the screener, the facilitator, or the upstream. Refused like
-  // any other payment we decline, so a duplicate learns nothing new.
-  const token = client.claims.tryClaim(claim.key, claim.expires);
+  // One payment buys one search. The key is claimed before anything else
+  // touches the payment, and the store records a key once however many
+  // requests race for it, so concurrent requests carrying the same payment are
+  // refused here before they reach the screener, the facilitator, or the
+  // upstream. Refused like any other payment we decline, so a duplicate learns
+  // nothing new.
+  const token = await client.claims.tryClaim(claim.key, claim.expires);
   if (token === undefined) {
     return ended(outcome.DUPLICATE, paymentRejected(GENERIC_REJECTION));
   }
@@ -595,7 +598,7 @@ export async function handle(
     return attachReceipt(response, receipt);
   } finally {
     if (!decided) {
-      client.claims.release(claim.key, token);
+      await client.claims.release(claim.key, token);
     }
   }
 }

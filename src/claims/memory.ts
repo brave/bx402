@@ -1,20 +1,15 @@
-/**
- * In-memory claims over payment replay keys.
- *
- * A claim records the first use of a key until it expires, so concurrent
- * requests carrying the same payment can be told apart from the first one.
- * Claims live in one process, the same scope the MPP rail's store uses, and
- * every entry expires, so the map stays bounded by the paid request rate
- * times the claim window.
- */
+import { randomUUID } from "node:crypto";
+import type { ClaimStore, ClaimToken } from "./store.js";
 
 /** How often lapsed entries are swept out, in milliseconds. */
 const SWEEP_INTERVAL_MS = 60_000;
 
-/** Proof of holding a claim. Only the holder can release its key. */
-export type ClaimToken = symbol;
-
-export class ClaimStore {
+/**
+ * Claims held in this process. Two pods each keep their own, so this store
+ * only suits a single process: local runs, tests, and deployments without a
+ * shared table.
+ */
+export class MemoryClaimStore implements ClaimStore {
   /** Each claimed key mapped to when its claim lapses and who holds it. */
   private readonly claims = new Map<string, { expires: number; token: ClaimToken }>();
 
@@ -22,30 +17,22 @@ export class ClaimStore {
   private sweepDue = 0;
 
   /**
-   * Record the first use of `key` until `expires`, an epoch millisecond.
-   * The token to release it with when this call recorded the key,
-   * `undefined` when the key is already claimed and its claim has not
-   * lapsed. The check and the write run with no await between them, so on
-   * Node's single event loop two callers can never both claim a key.
+   * The check and the write run with no await between them, so on Node's
+   * single event loop two callers can never both claim a key.
    */
-  tryClaim(key: string, expires: number): ClaimToken | undefined {
+  async tryClaim(key: string, expires: number): Promise<ClaimToken | undefined> {
     const now = Date.now();
     this.sweep(now);
     const current = this.claims.get(key);
     if (current !== undefined && current.expires > now) {
       return undefined;
     }
-    const token = Symbol(key);
+    const token = randomUUID();
     this.claims.set(key, { expires, token });
     return token;
   }
 
-  /**
-   * Release the claim on `key` held with `token`. A token releases only the
-   * claim it was handed out for, so a caller whose claim lapsed cannot drop
-   * the key's current holder.
-   */
-  release(key: string, token: ClaimToken): void {
+  async release(key: string, token: ClaimToken): Promise<void> {
     if (this.claims.get(key)?.token === token) {
       this.claims.delete(key);
     }
