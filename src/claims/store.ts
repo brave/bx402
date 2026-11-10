@@ -10,14 +10,26 @@
 /** Proof of holding a claim. Only the holder can release its key. */
 export type ClaimToken = string;
 
+/**
+ * The store could not say whether a key is claimed: a timeout, an access
+ * denial, or any other failure to reach it. The payment must be refused, since
+ * an unanswered claim never proves first use. The underlying error is kept as
+ * the cause for logs and is never shown to clients.
+ */
+export class ClaimStoreError extends Error {
+  constructor(cause: unknown) {
+    super("replay claim store unavailable", { cause });
+    this.name = "ClaimStoreError";
+  }
+}
+
 /** Where claims are recorded, shared by every request a store is handed to. */
 export interface ClaimStore {
   /**
    * Record the first use of `key` until `expires`, an epoch millisecond.
    * Resolves to the token to release it with when this call recorded the key,
    * and to `undefined` when the key is already claimed and its claim has not
-   * lapsed. Rejects when the store cannot answer, which never counts as a
-   * claim.
+   * lapsed. Rejects with `ClaimStoreError` when the store cannot answer.
    */
   tryClaim(key: string, expires: number): Promise<ClaimToken | undefined>;
   /**
