@@ -178,10 +178,6 @@ function recording(claims: ClaimStore): { store: ClaimStore; calls: string[] } {
         calls.push(`release ${key}`);
         return claims.release(key, token);
       },
-      drop: (key: string) => {
-        calls.push(`drop ${key}`);
-        return claims.drop(key);
-      },
     },
   };
 }

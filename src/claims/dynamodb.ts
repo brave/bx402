@@ -18,7 +18,6 @@ import { randomUUID } from "node:crypto";
 import {
   ConditionalCheckFailedException,
   DeleteItemCommand,
-  type DeleteItemCommandInput,
   type DynamoDBClient,
   PutItemCommand,
 } from "@aws-sdk/client-dynamodb";
@@ -84,32 +83,22 @@ export class DynamoDbClaimStore implements ClaimStore {
 
   /**
    * A delete conditioned on the holder, so a caller whose claim lapsed and was
-   * taken over removes nothing.
+   * taken over removes nothing. Any failure is logged and swallowed: the claim
+   * then holds its key until it lapses. A failed holder condition means the
+   * claim was already taken over, so there is nothing to log.
    */
   async release(key: string, token: ClaimToken): Promise<void> {
-    await this.delete({
-      TableName: this.table,
-      Key: { pk: { S: key } },
-      ConditionExpression: "#holder = :holder",
-      ExpressionAttributeNames: { "#holder": "holder" },
-      ExpressionAttributeValues: { ":holder": { S: token } },
-    });
-  }
-
-  async drop(key: string): Promise<void> {
-    await this.delete({ TableName: this.table, Key: { pk: { S: key } } });
-  }
-
-  /**
-   * Run one delete, logging and swallowing any failure: the claim then holds
-   * its key until it lapses. A failed holder condition means the claim was
-   * already taken over, so there is nothing to log.
-   */
-  private async delete(input: DeleteItemCommandInput): Promise<void> {
     try {
-      await this.client.send(new DeleteItemCommand(input), {
-        abortSignal: AbortSignal.timeout(CALL_TIMEOUT_MS),
-      });
+      await this.client.send(
+        new DeleteItemCommand({
+          TableName: this.table,
+          Key: { pk: { S: key } },
+          ConditionExpression: "#holder = :holder",
+          ExpressionAttributeNames: { "#holder": "holder" },
+          ExpressionAttributeValues: { ":holder": { S: token } },
+        }),
+        { abortSignal: AbortSignal.timeout(CALL_TIMEOUT_MS) },
+      );
     } catch (err) {
       if (err instanceof ConditionalCheckFailedException) {
         return;

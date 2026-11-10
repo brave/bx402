@@ -39,9 +39,4 @@ export interface ClaimStore {
    * only holds its key until it lapses.
    */
   release(key: string, token: ClaimToken): Promise<void>;
-  /**
-   * Remove the claim on `key` whoever holds it, for a caller that keeps no
-   * token. Never rejects, for the same reason as `release`.
-   */
-  drop(key: string): Promise<void>;
 }

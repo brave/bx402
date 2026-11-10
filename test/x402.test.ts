@@ -325,7 +325,6 @@ describe("x402", () => {
         return undefined;
       },
       release: async () => {},
-      drop: async () => {},
     };
 
     const response = await handle(
@@ -357,7 +356,6 @@ describe("x402", () => {
         throw new ClaimStoreError(new Error("ServiceUnavailable"));
       },
       release: async () => {},
-      drop: async () => {},
     };
     const metrics = new Metrics();
     let searches = 0;

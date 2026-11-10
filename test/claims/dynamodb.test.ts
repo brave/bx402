@@ -108,16 +108,6 @@ describe("dynamodb claims", () => {
     });
   });
 
-  it("a_drop_deletes_the_key_whoever_holds_it", async () => {
-    const store = mockStore();
-    dynamodb.on(DeleteItemCommand).resolves({});
-
-    await store.drop("key");
-
-    const [call] = dynamodb.commandCalls(DeleteItemCommand);
-    expect(call?.args[0].input).toEqual({ TableName: TABLE, Key: { pk: { S: "key" } } });
-  });
-
   it("a_release_never_rejects", async () => {
     // A claim taken over by another holder, and a table that cannot answer,
     // both leave the release a no-op the caller never has to handle.
