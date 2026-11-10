@@ -6,6 +6,7 @@ import {
   validateDiscoveryExtension,
 } from "@x402/extensions/bazaar";
 import { afterEach, describe, expect, it } from "vitest";
+import { ClaimStoreError } from "../src/claims/store.js";
 import { ENDPOINTS, findEndpoint } from "../src/endpoints.js";
 import { failure, Metrics } from "../src/metrics.js";
 import {
@@ -338,6 +339,54 @@ describe("x402", () => {
       `x402:${offer.network}:${offer.asset.toLowerCase()}:` +
         `${AUTHORIZATION.from.toLowerCase()}:${AUTHORIZATION.nonce.toLowerCase()}`,
     ]);
+  });
+
+  it("a_claim_store_that_cannot_answer_is_a_502_and_nothing_is_served", async () => {
+    const offer = offersFor("/res/v1/web/search")[0];
+    const built = testClient();
+    built.claims = {
+      tryClaim: async () => {
+        throw new ClaimStoreError(new Error("ServiceUnavailable"));
+      },
+      release: async () => {},
+    };
+    const metrics = new Metrics();
+    let searches = 0;
+
+    const response = await handle(
+      built,
+      undefined,
+      metrics,
+      "/res/v1/web/search",
+      REQUESTED,
+      paymentHeaders({
+        x402Version: 2,
+        accepted: offer,
+        payload: { authorization: AUTHORIZATION },
+      }),
+      async () => {
+        searches++;
+        return new Response(null, { status: 200 });
+      },
+    );
+
+    // No facilitator is mocked, so a verify call would surface as its own 502;
+    // the failure series below pins that the claim is where it stopped.
+    expect(response.status).toBe(502);
+    expect(searches).toBe(0);
+    await assertRecorded(
+      metrics,
+      'bx402_payment_failures_total{rail="x402",step="claim",reason="unreachable"} 1',
+    );
+    await assertRecorded(
+      metrics,
+      'bx402_payments_total{rail="x402",endpoint="/res/v1/web/search",outcome="network_unavailable"} 1',
+    );
+    // Timed even when it fails, so a slow store shows up as the claim step.
+    await assertRecorded(
+      metrics,
+      'bx402_payment_step_duration_seconds_count{rail="x402",step="claim"} 1',
+    );
   });
 
   it("the_claim_window_is_the_offer_timeout_not_the_clients_deadline", () => {

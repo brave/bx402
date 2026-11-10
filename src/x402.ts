@@ -26,7 +26,7 @@ import { registerExactEvmScheme } from "@x402/evm/exact/server";
 import { base, baseSepolia } from "viem/chains";
 import type { Call } from "./calls.js";
 import { MemoryClaimStore } from "./claims/memory.js";
-import type { ClaimStore } from "./claims/store.js";
+import type { ClaimStore, ClaimToken } from "./claims/store.js";
 import type { X402Config } from "./config.js";
 import type { Offer } from "./discovery.js";
 import { ENDPOINTS, findEndpoint, ICON_PATH } from "./endpoints.js";
@@ -467,6 +467,7 @@ function describeOffer(entry: PaymentRequirements): string {
  * - payment missing, malformed, or rejected: `402`, before any upstream call.
  * - payment already in flight or recently decided: `402`, before any
  *   facilitator call.
+ * - replay claim store unreachable: `502`, before any facilitator call.
  * - facilitator unreachable on verify: `502`.
  * - search fails (4xx or 5xx): relayed as is, settlement skipped.
  * - settlement fails: `502`, the response body withheld.
@@ -516,7 +517,20 @@ export async function handle(
   // The key also names the rail, network, and token: the store is shared with
   // the other rail, and a nonce is only unique per token contract.
   const key = `${RAIL}:${offer.network}:${offer.asset.toLowerCase()}:${claim.key}`;
-  const token = await client.claims.tryClaim(key, claim.expires);
+
+  // A store that cannot answer is our failure, not the client's, so it is a
+  // 502 and the payment is never checked or served.
+  const claimStarted = performance.now();
+  let token: ClaimToken | undefined;
+  try {
+    token = await client.claims.tryClaim(key, claim.expires);
+  } catch (err) {
+    metrics.recordFailure(RAIL, step.CLAIM, failure.UNREACHABLE);
+    log.error(`x402 replay claim failed: ${describe(err)}`);
+    return ended(outcome.NETWORK_UNAVAILABLE, gatewayError("payment could not be checked"));
+  } finally {
+    metrics.recordPaymentStep(RAIL, step.CLAIM, seconds(claimStarted));
+  }
   if (token === undefined) {
     return ended(outcome.DUPLICATE, paymentRejected(GENERIC_REJECTION));
   }

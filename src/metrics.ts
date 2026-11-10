@@ -131,7 +131,7 @@ export const outcome = {
   DUPLICATE: "duplicate",
   /** The payer did not clear address screening. */
   SCREENED_OUT: "screened_out",
-  /** We could not reach the facilitator or the chain. */
+  /** We could not reach the facilitator, the chain, or the claim store. */
   NETWORK_UNAVAILABLE: "network_unavailable",
   /** Verified, then could not be settled. */
   SETTLE_FAILED: "settle_failed",
@@ -218,6 +218,8 @@ export type Failure = (typeof failure)[keyof typeof failure];
 export const step = {
   /** Reading the proof, before anything is checked. */
   DECODE: "decode",
+  /** Recording the payment's first use, so a replay of it is refused. */
+  CLAIM: "claim",
   /** Checking a payment without moving money. */
   VERIFY: "verify",
   /** Moving the money. */
