@@ -13,12 +13,52 @@ services:
       X402_FACILITATOR_URL: ${X402_FACILITATOR_URL:-https://x402.org/facilitator}
       MPP_RPC_URL: ${MPP_RPC_URL:-https://rpc.moderato.tempo.xyz}
       MPP_SECRET_KEY: ${MPP_SECRET_KEY}
+      # Replay claims go to the local table below, as a real deployment's go to
+      # a table every replica shares. DynamoDB Local takes any credentials.
+      REPLAY_CLAIMS_TABLE_ID: bx402-replay-claims
+      AWS_ENDPOINT_URL_DYNAMODB: http://dynamodb:8000
+      AWS_REGION: us-west-2
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
     depends_on:
       # bx402 asks the facilitator what it supports as it starts, so it waits
       # for ours when that runs. Without the profile there is nothing to wait for.
       facilitator:
         condition: service_healthy
         required: false
+      # bx402 checks the claim table as it starts, so the table must exist.
+      dynamodb-table:
+        condition: service_completed_successfully
+
+  # The replay claim table, held in memory and gone when the stack stops.
+  dynamodb:
+    image: amazon/dynamodb-local:3.3.2
+    command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]
+
+  # Creates the claim table with the key and expiry attribute the real one
+  # has, then exits. A table left from an earlier run is kept as it is.
+  dynamodb-table:
+    image: amazon/aws-cli:2.39.3
+    depends_on: [dynamodb]
+    environment:
+      AWS_ENDPOINT_URL_DYNAMODB: http://dynamodb:8000
+      AWS_REGION: us-west-2
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        set -e
+        until aws dynamodb list-tables > /dev/null 2>&1; do sleep 1; done
+        if aws dynamodb describe-table --table-name bx402-replay-claims > /dev/null 2>&1; then
+          exit 0
+        fi
+        aws dynamodb create-table --table-name bx402-replay-claims \
+          --attribute-definitions AttributeName=pk,AttributeType=S \
+          --key-schema AttributeName=pk,KeyType=HASH \
+          --billing-mode PAY_PER_REQUEST > /dev/null
+        aws dynamodb update-time-to-live --table-name bx402-replay-claims \
+          --time-to-live-specification Enabled=true,AttributeName=expiresAt > /dev/null
 
   # Our own facilitator on Base Sepolia, started only with
   # `docker compose --profile facilitator up`. bx402 uses it once
