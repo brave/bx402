@@ -23,7 +23,7 @@ import {
 import { createClient, http } from "viem/tempo";
 import { tempo as tempoMainnet, tempoModerato } from "viem/tempo/chains";
 import { ousd, pathusd, usdce } from "viem/tokens";
-import { type ClaimStore, ClaimStoreError } from "./claims/store.js";
+import { type ClaimStore, ClaimStoreError, type ClaimToken } from "./claims/store.js";
 import type { MppConfig } from "./config.js";
 import type { Offer } from "./discovery.js";
 import { ENDPOINTS, findEndpoint } from "./endpoints.js";
@@ -262,6 +262,9 @@ function buildHandler(rail: MppConfig, network: Network, claims: ClaimStore, met
   });
 }
 
+/** How often the adapter forgets claims that have lapsed, in milliseconds. */
+const HELD_SWEEP_INTERVAL_MS = 60_000;
+
 /**
  * The claim store in the shape the SDK takes for replay protection, its keys
  * marked as this rail's.
@@ -272,6 +275,11 @@ function buildHandler(rail: MppConfig, network: Network, claims: ClaimStore, met
  * reads and writes the store only for fee sponsorship, which is never set up,
  * so those calls fail like an unreachable store and the payment gets a 502.
  *
+ * The SDK removes a claim by key alone, so the token of each claim taken here
+ * is kept until the claim lapses, and a removal releases only that claim. A
+ * removal that repeats, or that comes after another replica took the key,
+ * leaves the other holder's claim in place.
+ *
  * Each claim is timed here, the one place that sees it apart from the rest of
  * the charge.
  */
@@ -280,15 +288,43 @@ export function replayStore(claims: ClaimStore, metrics: Metrics): Store.AtomicS
     throw new ClaimStoreError(new Error("the claim store only claims and removes keys"));
   };
   const keyed = (key: string) => `${RAIL}:${key}`;
+  const held = new Map<string, { token: ClaimToken; expires: number }>();
+  let sweepDue = 0;
+  // Forget lapsed claims at most once per interval, so the walk stays off
+  // most requests.
+  const sweep = (now: number) => {
+    if (now < sweepDue) {
+      return;
+    }
+    sweepDue = now + HELD_SWEEP_INTERVAL_MS;
+    for (const [key, { expires }] of held) {
+      if (expires <= now) {
+        held.delete(key);
+      }
+    }
+  };
   return {
     get: unsupported,
     put: unsupported,
     update: unsupported,
-    delete: (key) => claims.drop(keyed(key)),
+    delete: async (key) => {
+      const claim = held.get(keyed(key));
+      if (claim === undefined) {
+        return;
+      }
+      held.delete(keyed(key));
+      await claims.release(keyed(key), claim.token);
+    },
     tryClaim: async (key, expires) => {
+      sweep(Date.now());
       const started = performance.now();
       try {
-        return (await claims.tryClaim(keyed(key), expires)) !== undefined;
+        const token = await claims.tryClaim(keyed(key), expires);
+        if (token === undefined) {
+          return false;
+        }
+        held.set(keyed(key), { token, expires });
+        return true;
       } finally {
         metrics.recordPaymentStep(RAIL, step.CLAIM, seconds(started));
       }

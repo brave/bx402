@@ -651,7 +651,7 @@ describe("mpp", () => {
     await assertRecorded(metrics, 'bx402_distinct_payers{rail="mpp"} 1');
   });
 
-  it("a_real_charge_claims_its_transaction_and_drops_the_claim_when_the_broadcast_fails", async () => {
+  it("a_real_charge_claims_its_transaction_and_releases_the_claim_when_the_broadcast_fails", async () => {
     // The SDK's own charge, not a stand in, so an SDK that starts reading or
     // writing the store, which the store answers as unreachable, fails here.
     const tempo = mockTempoRpc(MODERATO);
@@ -672,11 +672,11 @@ describe("mpp", () => {
     );
     // Every answer used, so the refusal came from the broadcast itself.
     expect(tempo.pendingInterceptors()).toEqual([]);
-    // Claimed under this rail before the broadcast and dropped after it failed,
-    // so the payer can retry the same transaction.
+    // Claimed under this rail before the broadcast and released after it
+    // failed, so the payer can retry the same transaction.
     const [claimed] = calls;
     expect(claimed).toMatch(/^claim mpp:/);
-    expect(calls).toEqual([claimed, claimed?.replace("claim", "drop")]);
+    expect(calls).toEqual([claimed, claimed?.replace("claim", "release")]);
   });
 
   it("a_real_charge_whose_transaction_is_claimed_elsewhere_is_a_duplicate", async () => {
@@ -705,7 +705,7 @@ describe("mpp", () => {
     );
   });
 
-  it("the_sdk_store_claims_and_drops_keys_under_this_rail", async () => {
+  it("the_sdk_store_claims_and_releases_keys_under_this_rail", async () => {
     const claims = new MemoryClaimStore();
     const metrics = new Metrics();
     const store = replayStore(claims, metrics);
@@ -723,6 +723,20 @@ describe("mpp", () => {
 
     await store.delete("hash");
     expect(await store.tryClaim?.("hash", later)).toBe(true);
+  });
+
+  it("the_sdk_store_removes_only_the_claim_it_took", async () => {
+    const claims = new MemoryClaimStore();
+    const store = replayStore(claims, new Metrics());
+    const later = Date.now() + 60_000;
+    expect(await store.tryClaim?.("hash", later)).toBe(true);
+    await store.delete("hash");
+    // Another replica takes the freed key, then the first removal repeats.
+    const other = await claims.tryClaim("mpp:hash", later);
+    await store.delete("hash");
+
+    expect(other).toBeDefined();
+    expect(await claims.tryClaim("mpp:hash", later)).toBeUndefined();
   });
 
   it("the_sdk_store_refuses_reads_and_writes_it_is_never_meant_to_get", async () => {
