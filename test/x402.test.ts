@@ -303,6 +303,43 @@ describe("x402", () => {
     expect(second.claim.key).toBe(first.claim.key);
   });
 
+  it("the_payment_is_claimed_under_its_rail_network_and_token", async () => {
+    const offer = offersFor("/res/v1/web/search")[0];
+    if (offer === undefined) {
+      throw new Error("the web search endpoint has an offer");
+    }
+    const claimed: string[] = [];
+    const built = testClient();
+    // A store that refuses every key, so the payment stops at its claim.
+    built.claims = {
+      tryClaim: async (key) => {
+        claimed.push(key);
+        return undefined;
+      },
+      release: async () => {},
+    };
+
+    const response = await handle(
+      built,
+      undefined,
+      new Metrics(),
+      "/res/v1/web/search",
+      REQUESTED,
+      paymentHeaders({
+        x402Version: 2,
+        accepted: offer,
+        payload: { authorization: AUTHORIZATION },
+      }),
+      async () => new Response(null, { status: 200 }),
+    );
+
+    expect(response.status).toBe(402);
+    expect(claimed).toEqual([
+      `x402:${offer.network}:${offer.asset.toLowerCase()}:` +
+        `${AUTHORIZATION.from.toLowerCase()}:${AUTHORIZATION.nonce.toLowerCase()}`,
+    ]);
+  });
+
   it("the_claim_window_is_the_offer_timeout_not_the_clients_deadline", () => {
     // A sender must not shorten how long its payment is held against
     // duplicates, so a deadline just ahead does not move the expiry.

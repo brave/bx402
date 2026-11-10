@@ -512,7 +512,11 @@ export async function handle(
   // refused here before they reach the screener, the facilitator, or the
   // upstream. Refused like any other payment we decline, so a duplicate learns
   // nothing new.
-  const token = await client.claims.tryClaim(claim.key, claim.expires);
+  //
+  // The key also names the rail, network, and token: the store is shared with
+  // the other rail, and a nonce is only unique per token contract.
+  const key = `${RAIL}:${offer.network}:${offer.asset.toLowerCase()}:${claim.key}`;
+  const token = await client.claims.tryClaim(key, claim.expires);
   if (token === undefined) {
     return ended(outcome.DUPLICATE, paymentRejected(GENERIC_REJECTION));
   }
@@ -598,7 +602,7 @@ export async function handle(
     return attachReceipt(response, receipt);
   } finally {
     if (!decided) {
-      await client.claims.release(claim.key, token);
+      await client.claims.release(key, token);
     }
   }
 }
