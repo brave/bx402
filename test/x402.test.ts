@@ -6,6 +6,7 @@ import {
   validateDiscoveryExtension,
 } from "@x402/extensions/bazaar";
 import { afterEach, describe, expect, it } from "vitest";
+import { MemoryClaimStore } from "../src/claims/memory.js";
 import { ClaimStoreError } from "../src/claims/store.js";
 import { ENDPOINTS, findEndpoint } from "../src/endpoints.js";
 import { failure, Metrics } from "../src/metrics.js";
@@ -190,10 +191,13 @@ describe("x402", () => {
   afterEach(restoreNetwork);
 
   it("discovery_offers_restate_the_accepts_table", () => {
-    const built = client({
-      facilitatorUrl: "https://x402.org/facilitator",
-      enableBazaar: true,
-    });
+    const built = client(
+      {
+        facilitatorUrl: "https://x402.org/facilitator",
+        enableBazaar: true,
+      },
+      new MemoryClaimStore(),
+    );
     const entries = offersFor("/res/v1/web/search");
 
     const stated = offers(built, "/res/v1/web/search");
@@ -214,10 +218,13 @@ describe("x402", () => {
   });
 
   it("discovery_offers_are_empty_for_a_path_that_is_not_sold", () => {
-    const built = client({
-      facilitatorUrl: "https://x402.org/facilitator",
-      enableBazaar: true,
-    });
+    const built = client(
+      {
+        facilitatorUrl: "https://x402.org/facilitator",
+        enableBazaar: true,
+      },
+      new MemoryClaimStore(),
+    );
     expect(offers(built, "/res/v1/answers/search")).toEqual([]);
   });
 
@@ -673,10 +680,13 @@ describe("x402", () => {
     // Staging settles real payments too, but must not appear in a catalog. The
     // declaration is what makes a facilitator catalog a path, so it goes, and the
     // resource goes with it.
-    const built = client({
-      facilitatorUrl: "https://x402.org/facilitator",
-      enableBazaar: false,
-    });
+    const built = client(
+      {
+        facilitatorUrl: "https://x402.org/facilitator",
+        enableBazaar: false,
+      },
+      new MemoryClaimStore(),
+    );
     const entry = challenge(built, REQUESTED, "GET");
     const { extensions } = decodeChallenge((entry as { value: string }).value) as {
       extensions: Record<string, unknown>;

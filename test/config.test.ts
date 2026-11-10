@@ -70,4 +70,16 @@ describe("config", () => {
       expect(() => enabled(value), value).toThrow(/X402_ENABLE_BAZAAR/);
     }
   });
+
+  it("the_replay_claim_table_is_read_as_given_and_empty_means_unset", () => {
+    const base = { BRAVE_SEARCH_API_KEY: "secret-key", ENABLED_RAILS: "none" };
+    const arn = "arn:aws:dynamodb:us-west-2:687622360911:table/bx402-replay-claims";
+    const table = (value?: string) =>
+      configFromEnv(value === undefined ? base : { ...base, REPLAY_CLAIMS_TABLE_ID: value })
+        .replayClaimsTable;
+
+    expect(table()).toBeUndefined();
+    expect(table("")).toBeUndefined();
+    expect(table(arn)).toBe(arn);
+  });
 });

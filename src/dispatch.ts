@@ -15,6 +15,7 @@
  */
 
 import type { MiddlewareHandler } from "hono";
+import type { ClaimStore } from "./claims/store.js";
 import type { Config } from "./config.js";
 import { AppError, emptyBody } from "./error.js";
 import { challenge, endpointLabel, type Metrics } from "./metrics.js";
@@ -75,11 +76,12 @@ export interface Context {
 export async function context(
   config: Config,
   screener: RestrictedAddressScreener | undefined,
+  claims: ClaimStore,
   metrics: Metrics,
 ): Promise<Context> {
   // x402 starts first, so an unusable facilitator URL is reported before any
   // RPC traffic goes out.
-  const x402Client = config.x402 === undefined ? undefined : await x402.start(config.x402);
+  const x402Client = config.x402 === undefined ? undefined : await x402.start(config.x402, claims);
   return {
     x402: x402Client,
     mpp: config.mpp === undefined ? undefined : await mpp.client(config.mpp),

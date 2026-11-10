@@ -25,7 +25,6 @@ import { findDefaultAsset, getDefaultAsset } from "@x402/evm";
 import { registerExactEvmScheme } from "@x402/evm/exact/server";
 import { base, baseSepolia } from "viem/chains";
 import type { Call } from "./calls.js";
-import { MemoryClaimStore } from "./claims/memory.js";
 import type { ClaimStore, ClaimToken } from "./claims/store.js";
 import type { X402Config } from "./config.js";
 import type { Offer } from "./discovery.js";
@@ -290,7 +289,7 @@ export interface Client {
  * Build the x402 client from the rail's settings. A bad `X402_FACILITATOR_URL`
  * is a startup misconfiguration.
  */
-export function client(rail: X402Config): Client {
+export function client(rail: X402Config, claims: ClaimStore): Client {
   try {
     // Parsed only to reject a URL we could never call; the string is passed on
     // as configured, so the facilitator sees exactly the base it was given.
@@ -301,7 +300,7 @@ export function client(rail: X402Config): Client {
   return {
     server: resourceServer(new HTTPFacilitatorClient({ url: rail.facilitatorUrl })),
     accepts: accepts(),
-    claims: new MemoryClaimStore(),
+    claims,
     enableBazaar: rail.enableBazaar,
   };
 }
@@ -319,8 +318,8 @@ export function resourceServer(facilitator: FacilitatorClient): x402ResourceServ
  * so a client never picks one that verify would refuse. A facilitator that
  * cannot be reached, or settles none of our offers, stops startup.
  */
-export async function start(rail: X402Config): Promise<Client> {
-  const built = client(rail);
+export async function start(rail: X402Config, claims: ClaimStore): Promise<Client> {
+  const built = client(rail, claims);
   try {
     await built.server.initialize();
   } catch (err) {

@@ -1,4 +1,5 @@
 import { app, banner } from "./app.js";
+import { claimsStatusLine, initClaimStore } from "./claims/init.js";
 import { configFromEnv } from "./config.js";
 import { loadDotEnv } from "./env.js";
 import { describe } from "./error.js";
@@ -39,11 +40,17 @@ async function run(): Promise<void> {
   );
 
   // A configured but unreachable bucket aborts startup, so the service never
-  // serves traffic with a broken screener.
-  const { screener, status } = await initScreener(config, metrics);
+  // serves traffic with a broken screener. Likewise a configured but
+  // unreachable claim table, so no replica serves with replay claims the others
+  // cannot see. The two checks are independent, so they run together.
+  const [{ screener, status }, { claims, status: claimsStatus }] = await Promise.all([
+    initScreener(config, metrics),
+    initClaimStore(config.replayClaimsTable),
+  ]);
   log.info(`restricted address screening: ${statusLine(status)}`);
+  log.info(`replay claims: ${claimsStatusLine(claimsStatus)}`);
 
-  const hono = await app(config, screener, metrics);
+  const hono = await app(config, screener, claims, metrics);
 
   // Traffic and metrics are served on separate listeners, so the public port
   // never exposes the metrics. A failure on either listener, a port already in

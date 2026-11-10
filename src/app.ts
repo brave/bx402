@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { Dispatcher } from "undici";
+import type { ClaimStore } from "./claims/store.js";
 import type { Config } from "./config.js";
 import { CACHE_CONTROL, DISCOVERY_PATH, document, GUIDE_PATH, guide, icon } from "./discovery.js";
 import { absoluteUri, context, dispatch } from "./dispatch.js";
@@ -37,11 +38,12 @@ export function banner(): string {
 export async function app(
   config: Config,
   screener: RestrictedAddressScreener | undefined,
+  claims: ClaimStore,
   metrics: Metrics,
   client: Dispatcher = searchClient(),
 ): Promise<Hono> {
   const hono = new Hono();
-  const ctx = await context(config, screener, metrics);
+  const ctx = await context(config, screener, claims, metrics);
 
   // Outermost, so the timing covers everything the service does and the count
   // includes requests that match no route.

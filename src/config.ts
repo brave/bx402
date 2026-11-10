@@ -92,6 +92,12 @@ export interface Config {
    * the default for local and testnet runs.
    */
   restrictedAddressS3Bucket: string | undefined;
+  /**
+   * DynamoDB table where payment replay claims are recorded, by name or, for a
+   * table in another account, by ARN. Absent keeps claims in this process,
+   * which only suits a single replica.
+   */
+  replayClaimsTable: string | undefined;
 }
 
 /**
@@ -111,6 +117,8 @@ export interface Config {
  *   MPP challenges to this service.
  * - `BRAVE_SEARCH_API_BASE_URL` (optional): defaults to the public endpoint.
  * - `RESTRICTED_ADDRESS_S3_BUCKET` (optional): unset or empty turns screening off.
+ * - `REPLAY_CLAIMS_TABLE_ID` (optional): DynamoDB table name or ARN shared by
+ *   every replica; unset or empty keeps replay claims in this process.
  *
  * An absent required variable throws a missing-configuration error.
  */
@@ -133,6 +141,7 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): Config {
         }
       : undefined,
     restrictedAddressS3Bucket: optionalVar(env, "RESTRICTED_ADDRESS_S3_BUCKET"),
+    replayClaimsTable: optionalVar(env, "REPLAY_CLAIMS_TABLE_ID"),
   };
 }
 

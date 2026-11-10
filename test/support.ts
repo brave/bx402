@@ -16,6 +16,8 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { expect } from "vitest";
 import { app } from "../src/app.js";
+import { MemoryClaimStore } from "../src/claims/memory.js";
+import type { ClaimStore } from "../src/claims/store.js";
 import type { Config } from "../src/config.js";
 import { type Context, context } from "../src/dispatch.js";
 import { Metrics, type MetricsSource } from "../src/metrics.js";
@@ -41,6 +43,7 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     // build a handler with.
     mpp: { rpcUrl: "http://tempo.invalid", secretKey: "test-secret-of-at-least-32-bytes" },
     restrictedAddressS3Bucket: undefined,
+    replayClaimsTable: undefined,
     ...overrides,
   };
 }
@@ -54,7 +57,7 @@ export function testClient(): X402Client {
   if (config.x402 === undefined) {
     throw new Error("the test config enables the x402 rail");
   }
-  return x402Client(config.x402);
+  return x402Client(config.x402, new MemoryClaimStore());
 }
 
 /**
@@ -260,7 +263,7 @@ export async function buildContext(
   support = TEST_SUPPORT,
 ): Promise<Context> {
   stubStartup(config, chain, support);
-  return context(config, undefined, new Metrics());
+  return context(config, undefined, new MemoryClaimStore(), new Metrics());
 }
 
 /** Build the app the way a test needs it, its rails' startup calls answered. */
@@ -269,11 +272,12 @@ export async function buildApp(
   screener: RestrictedAddressScreener | undefined,
   metrics: Metrics,
   dispatcher?: Dispatcher,
+  claims: ClaimStore = new MemoryClaimStore(),
 ): Promise<Hono> {
   stubStartup(config);
   return dispatcher === undefined
-    ? app(config, screener, metrics)
-    : app(config, screener, metrics, dispatcher);
+    ? app(config, screener, claims, metrics)
+    : app(config, screener, claims, metrics, dispatcher);
 }
 
 /** The key every forged transaction is signed with, and the address it recovers to. */

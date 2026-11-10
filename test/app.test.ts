@@ -3,6 +3,7 @@ import type { Hono } from "hono";
 import { MockAgent } from "undici";
 import { afterEach, describe, expect, it } from "vitest";
 import { app, banner } from "../src/app.js";
+import { MemoryClaimStore } from "../src/claims/memory.js";
 import { ENDPOINTS } from "../src/endpoints.js";
 import { Metrics } from "../src/metrics.js";
 import { searchClient } from "../src/search.js";
@@ -445,7 +446,9 @@ describe("app", () => {
     // endpoint. The rail asks it which chain it serves and gets no answer, which
     // aborts startup rather than serving a rail that cannot price anything.
     mockFacilitatorSupport();
-    await expect(app(testConfig(), undefined, new Metrics())).rejects.toThrow("MPP_RPC_URL");
+    await expect(
+      app(testConfig(), undefined, new MemoryClaimStore(), new Metrics()),
+    ).rejects.toThrow("MPP_RPC_URL");
   });
 
   it("app_rejects_a_facilitator_it_cannot_load_support_from", async () => {
@@ -470,9 +473,10 @@ describe("app", () => {
       if (reply !== undefined) {
         pool.intercept({ method: "GET", path: "/supported" }).reply(reply.status, reply.body);
       }
-      await expect(app(x402Only, undefined, new Metrics()), label).rejects.toThrow(
-        "X402_FACILITATOR_URL",
-      );
+      await expect(
+        app(x402Only, undefined, new MemoryClaimStore(), new Metrics()),
+        label,
+      ).rejects.toThrow("X402_FACILITATOR_URL");
       restoreNetwork();
     }
   });
@@ -488,7 +492,12 @@ describe("app", () => {
         extensions: [],
         signers: {},
       });
-    const hono = await app(testConfig({ mpp: undefined }), undefined, new Metrics());
+    const hono = await app(
+      testConfig({ mpp: undefined }),
+      undefined,
+      new MemoryClaimStore(),
+      new Metrics(),
+    );
 
     for (const endpoint of ENDPOINTS) {
       const response = await hono.request(endpoint.path);
@@ -777,6 +786,32 @@ describe("app", () => {
     const replay = await built.request("/res/v1/web/search?q=rust", header);
 
     expect(first.status).toBe(200);
+    expect(replay.status).toBe(402);
+    await assertRecorded(
+      metrics,
+      'bx402_upstream_requests_total{endpoint="/res/v1/web/search",status="200"} 1',
+    );
+    await assertPaymentOutcome(metrics, "x402", "duplicate");
+  });
+
+  it("a_payment_settled_on_one_replica_is_refused_on_another", async () => {
+    // Two replicas sharing one claim store, the way every pod shares the table.
+    const mock = mockUpstream();
+    mock
+      .get(UPSTREAM)
+      .intercept({ method: "GET", path: "/res/v1/web/search?q=rust" })
+      .reply(200, { web: {} }, { headers: { "content-type": "application/json" } });
+    mockFacilitator(true, true);
+    const claims = new MemoryClaimStore();
+    const metrics = new Metrics();
+    const first = await buildApp(testConfig(), undefined, metrics, mock, claims);
+    const second = await buildApp(testConfig(), undefined, metrics, mock, claims);
+    const header = paidNonce("/res/v1/web/search", `0x${"44".repeat(32)}`);
+
+    const paid = await first.request("/res/v1/web/search?q=rust", header);
+    const replay = await second.request("/res/v1/web/search?q=rust", header);
+
+    expect(paid.status).toBe(200);
     expect(replay.status).toBe(402);
     await assertRecorded(
       metrics,
