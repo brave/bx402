@@ -1,7 +1,7 @@
 import { KMSClient } from "@aws-sdk/client-kms";
-import { NodeHttpHandler } from "@smithy/node-http-handler";
 import type { LocalAccount } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { awsRequestHandler } from "../aws.js";
 import { loadDotEnv } from "../env.js";
 import { describe } from "../error.js";
 import { exitAfterLogs, initLogging, log } from "../log.js";
@@ -52,12 +52,7 @@ async function signer(source: SignerSource): Promise<LocalAccount> {
   if (source.kind === "privateKey") {
     return privateKeyToAccount(source.key);
   }
-  const client = new KMSClient({
-    requestHandler: new NodeHttpHandler({
-      connectionTimeout: KMS_TIMEOUT_MS,
-      requestTimeout: KMS_TIMEOUT_MS,
-    }),
-  });
+  const client = new KMSClient({ requestHandler: awsRequestHandler(KMS_TIMEOUT_MS) });
   return kmsAccount(client, source.keyId);
 }
 

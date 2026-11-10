@@ -26,7 +26,7 @@
  */
 
 import { HeadObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { NodeHttpHandler } from "@smithy/node-http-handler";
+import { awsRequestHandler } from "./aws.js";
 import type { Config } from "./config.js";
 import { describe, serviceUnavailable } from "./error.js";
 import { log } from "./log.js";
@@ -182,10 +182,7 @@ export async function initScreener(
   }
   // Cap the S3 call so a stalled connection cannot hang startup.
   const client = new S3Client({
-    requestHandler: new NodeHttpHandler({
-      connectionTimeout: STARTUP_TIMEOUT_MS,
-      requestTimeout: STARTUP_TIMEOUT_MS,
-    }),
+    requestHandler: awsRequestHandler(STARTUP_TIMEOUT_MS),
   });
   return initWith(client, bucket, metrics);
 }
