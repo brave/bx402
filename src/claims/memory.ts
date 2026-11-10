@@ -38,6 +38,10 @@ export class MemoryClaimStore implements ClaimStore {
     }
   }
 
+  async drop(key: string): Promise<void> {
+    this.claims.delete(key);
+  }
+
   /** The number of claims held, for tests that watch the map stay bounded. */
   get size(): number {
     return this.claims.size;

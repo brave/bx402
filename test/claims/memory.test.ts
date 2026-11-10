@@ -64,6 +64,13 @@ describe("claims", () => {
     expect(store.size).toBe(1);
   });
 
+  it("a_dropped_key_can_be_claimed_again_whoever_held_it", async () => {
+    const store = new MemoryClaimStore();
+    await claim(store, "key", later());
+    await store.drop("key");
+    await claim(store, "key", later());
+  });
+
   it("distinct_keys_do_not_contend", async () => {
     const store = new MemoryClaimStore();
     await claim(store, "one", later());
