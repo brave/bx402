@@ -1,3 +1,4 @@
+import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
 import { HeadObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import type { FacilitatorClient } from "@x402/core/server";
 import type { SettleResponse, SupportedResponse } from "@x402/core/types";
@@ -104,6 +105,18 @@ export function s3Failure(name: string, httpStatusCode: number): Error {
 /** The SDK's answer for a key that is not in the bucket. */
 export function notFound(): Error {
   return s3Failure("NotFound", 404);
+}
+
+/**
+ * What DynamoDB throws when a write's condition does not hold, carrying the
+ * claim in the way when `holder` names one.
+ */
+export function conditionFailed(holder?: string): ConditionalCheckFailedException {
+  return new ConditionalCheckFailedException({
+    message: "The conditional request failed",
+    $metadata: {},
+    ...(holder === undefined ? {} : { Item: { pk: { S: "key" }, holder: { S: holder } } }),
+  });
 }
 
 /**

@@ -1,13 +1,9 @@
-import {
-  ConditionalCheckFailedException,
-  DeleteItemCommand,
-  DynamoDBClient,
-  PutItemCommand,
-} from "@aws-sdk/client-dynamodb";
+import { DeleteItemCommand, DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import { mockClient } from "aws-sdk-client-mock";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DynamoDbClaimStore } from "../../src/claims/dynamodb.js";
 import { ClaimStoreError } from "../../src/claims/store.js";
+import { conditionFailed } from "../support.js";
 
 const TABLE = "bx402-replay-claims";
 
@@ -17,18 +13,6 @@ const dynamodb = mockClient(DynamoDBClient);
 /** A claim store over the mock table. */
 function mockStore(): DynamoDbClaimStore {
   return new DynamoDbClaimStore(new DynamoDBClient({}), TABLE);
-}
-
-/**
- * What DynamoDB throws when a write's condition does not hold, carrying the
- * claim in the way when `holder` names one.
- */
-function conditionFailed(holder?: string): ConditionalCheckFailedException {
-  return new ConditionalCheckFailedException({
-    message: "The conditional request failed",
-    $metadata: {},
-    ...(holder === undefined ? {} : { Item: { pk: { S: "key" }, holder: { S: holder } } }),
-  });
 }
 
 afterEach(() => {

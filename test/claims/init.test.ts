@@ -1,9 +1,10 @@
-import { DeleteItemCommand, DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DeleteItemCommand, DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import { mockClient } from "aws-sdk-client-mock";
 import { afterEach, describe, expect, it } from "vitest";
 import { DynamoDbClaimStore } from "../../src/claims/dynamodb.js";
 import { claimsStatusLine, initClaimStore, initWith, PROBE_KEY } from "../../src/claims/init.js";
 import { MemoryClaimStore } from "../../src/claims/memory.js";
+import { conditionFailed } from "../support.js";
 
 const TABLE = "bx402-replay-claims";
 
@@ -26,6 +27,7 @@ describe("claim store startup", () => {
     // The table lives in another account and region, so the pod's own region
     // would look for it in the wrong place.
     const arn = "arn:aws:dynamodb:us-west-2:687622360911:table/bx402-replay-claims";
+    dynamodb.on(PutItemCommand).rejects(conditionFailed());
     dynamodb.on(DeleteItemCommand).resolves({});
 
     const { claims, status } = await initClaimStore(arn);
@@ -40,23 +42,41 @@ describe("claim store startup", () => {
     expect(await (call.thisValue as DynamoDBClient).config.region()).toBe("us-west-2");
   });
 
-  it("startup_probes_the_table_with_one_delete", async () => {
+  it("startup_probes_the_table_with_a_write_that_never_lands_and_a_delete", async () => {
+    dynamodb.on(PutItemCommand).rejects(conditionFailed());
     dynamodb.on(DeleteItemCommand).resolves({});
 
     const claims = await initWith(new DynamoDBClient({}), TABLE);
 
     expect(claims).toBeInstanceOf(DynamoDbClaimStore);
+    const [write] = dynamodb.commandCalls(PutItemCommand);
+    expect(write?.args[0].input).toMatchObject({
+      TableName: TABLE,
+      Item: { pk: { S: PROBE_KEY } },
+      ConditionExpression: "attribute_exists(#pk) AND attribute_not_exists(#pk)",
+      ReturnValuesOnConditionCheckFailure: "ALL_OLD",
+    });
     const [call] = dynamodb.commandCalls(DeleteItemCommand);
     expect(call?.args[0].input).toEqual({ TableName: TABLE, Key: { pk: { S: PROBE_KEY } } });
   });
 
   it("a_table_the_probe_cannot_reach_aborts_startup", async () => {
-    const cause = new Error("AccessDeniedException");
-    dynamodb.on(DeleteItemCommand).rejects(cause);
+    // A role allowed to delete but not to write would otherwise start and
+    // then fail every claim.
+    for (const denied of ["write", "delete"]) {
+      const cause = new Error("AccessDeniedException");
+      dynamodb.on(PutItemCommand).rejects(denied === "write" ? cause : conditionFailed());
+      if (denied === "delete") {
+        dynamodb.on(DeleteItemCommand).rejects(cause);
+      } else {
+        dynamodb.on(DeleteItemCommand).resolves({});
+      }
 
-    const started = initWith(new DynamoDBClient({}), TABLE);
+      const started = initWith(new DynamoDBClient({}), TABLE);
 
-    await expect(started).rejects.toThrow(`replay claim table probe failed for ${TABLE}`);
-    await expect(started).rejects.toHaveProperty("cause", cause);
+      await expect(started, denied).rejects.toThrow(`replay claim table probe failed for ${TABLE}`);
+      await expect(started, denied).rejects.toHaveProperty("cause", cause);
+      dynamodb.reset();
+    }
   });
 });

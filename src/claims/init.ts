@@ -3,7 +3,12 @@
  * to work before any traffic.
  */
 
-import { DeleteItemCommand, DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import {
+  ConditionalCheckFailedException,
+  DeleteItemCommand,
+  DynamoDBClient,
+  PutItemCommand,
+} from "@aws-sdk/client-dynamodb";
 import { awsRequestHandler } from "../aws.js";
 import { DynamoDbClaimStore } from "./dynamodb.js";
 import { MemoryClaimStore } from "./memory.js";
@@ -15,7 +20,7 @@ import type { ClaimStore } from "./store.js";
  */
 const STARTUP_TIMEOUT_MS = 10_000;
 
-/** The key the startup probe deletes. No claim is ever recorded under it. */
+/** The key the startup probe touches. No claim is ever recorded under it. */
 export const PROBE_KEY = "probe:startup";
 
 /** Outcome of `initClaimStore`, for the startup log line. */
@@ -32,8 +37,8 @@ export function claimsStatusLine(status: ClaimsStatus): string {
  * The claim store the configuration asks for, proven to work before any traffic.
  *
  * - table unset: claims stay in this process
- * - table set: one delete of `PROBE_KEY`, which proves credentials, the table,
- *   and its region with the same permission a release needs. Any failure aborts
+ * - table set: a write and a delete of `PROBE_KEY`, which prove credentials,
+ *   the table, its region, and both permissions claims need. Any failure aborts
  *   startup, so a replica never serves with claims the others cannot see.
  */
 export async function initClaimStore(
@@ -60,12 +65,41 @@ function tableRegion(table: string): string | undefined {
   return prefix === "arn" && service === "dynamodb" && region ? region : undefined;
 }
 
-/** The probe, split out so tests can hand in a client over a mock table. */
+/**
+ * The probe, split out so tests can hand in a client over a mock table.
+ *
+ * The write carries a condition no item can meet, so it never lands. DynamoDB
+ * checks permissions before conditions, so its refused condition proves the
+ * write was allowed, while a denied write fails like any other error, and the
+ * delete beside it has nothing to wait for. It is shaped like a claim's write,
+ * so a policy that refuses anything a claim sends stops startup rather than
+ * every payment.
+ */
 export async function initWith(client: DynamoDBClient, table: string): Promise<ClaimStore> {
+  const options = { abortSignal: AbortSignal.timeout(STARTUP_TIMEOUT_MS) };
   try {
-    await client.send(new DeleteItemCommand({ TableName: table, Key: { pk: { S: PROBE_KEY } } }), {
-      abortSignal: AbortSignal.timeout(STARTUP_TIMEOUT_MS),
-    });
+    await Promise.all([
+      client
+        .send(
+          new PutItemCommand({
+            TableName: table,
+            Item: { pk: { S: PROBE_KEY }, holder: { S: PROBE_KEY }, expiresAt: { N: "0" } },
+            ConditionExpression: "attribute_exists(#pk) AND attribute_not_exists(#pk)",
+            ExpressionAttributeNames: { "#pk": "pk" },
+            ReturnValuesOnConditionCheckFailure: "ALL_OLD",
+          }),
+          options,
+        )
+        .catch((err: unknown) => {
+          if (!(err instanceof ConditionalCheckFailedException)) {
+            throw err;
+          }
+        }),
+      client.send(
+        new DeleteItemCommand({ TableName: table, Key: { pk: { S: PROBE_KEY } } }),
+        options,
+      ),
+    ]);
   } catch (err) {
     throw new Error(`replay claim table probe failed for ${table}`, { cause: err });
   }
