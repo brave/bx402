@@ -1,6 +1,8 @@
 import { Challenge, Credential, Receipt } from "mppx";
 import { HttpRequestError } from "viem";
 import { afterEach, describe, expect, it } from "vitest";
+import { MemoryClaimStore } from "../src/claims/memory.js";
+import { ClaimStoreError } from "../src/claims/store.js";
 import type { Config, MppConfig } from "../src/config.js";
 import { Metrics } from "../src/metrics.js";
 import type { Charge, Client } from "../src/mpp.js";
@@ -10,6 +12,7 @@ import {
   credential,
   handle,
   offers,
+  replayStore,
   servesTestnet,
   signerAddress,
   transactionPayload,
@@ -61,7 +64,7 @@ function mppRail(config: Config): MppConfig {
  */
 async function clientOn(config: Config, chain: number) {
   mockTempoRpc(chain);
-  return client(mppRail(config));
+  return client(mppRail(config), new MemoryClaimStore(), new Metrics());
 }
 
 /**
@@ -99,7 +102,10 @@ describe("mpp", () => {
     // Both die in the startup chain query, the first step of the build.
     for (const endpoint of ["not a url", "http://127.0.0.1:1"]) {
       const rail = { ...mppRail(testConfig()), rpcUrl: endpoint };
-      await expect(client(rail), `case: ${endpoint}`).rejects.toThrow("invalid configuration");
+      await expect(
+        client(rail, new MemoryClaimStore(), new Metrics()),
+        `case: ${endpoint}`,
+      ).rejects.toThrow("invalid configuration");
     }
   });
 
@@ -371,6 +377,32 @@ describe("mpp", () => {
     );
   });
 
+  it("a_claim_store_that_cannot_answer_is_a_gateway_error", async () => {
+    // The SDK wraps what its store throws, so the failure arrives as a cause.
+    const metrics = new Metrics();
+    const wrapped = new Error("internal payment error", {
+      cause: new ClaimStoreError(new Error("ServiceUnavailable")),
+    });
+    const response = await handle(
+      await refusingClient(wrapped),
+      undefined,
+      metrics,
+      WEB_SEARCH_PATH,
+      await payingHeaders(),
+      () => Promise.reject(new Error("the search must never run")),
+    );
+
+    expect(response.status).toBe(502);
+    await assertRecorded(
+      metrics,
+      `bx402_payments_total{rail="mpp",endpoint="${WEB_SEARCH_PATH}",outcome="network_unavailable"} 1`,
+    );
+    await assertRecorded(
+      metrics,
+      'bx402_payment_failures_total{rail="mpp",step="claim",reason="unreachable"} 1',
+    );
+  });
+
   it("a_refused_charge_is_not_a_gateway_error", async () => {
     // Anything that is not the endpoint being unreachable is the payer's
     // problem, and reads as a plain refusal.
@@ -467,5 +499,36 @@ describe("mpp", () => {
     );
     // The payer the signature names, counted and not recorded.
     await assertRecorded(metrics, 'bx402_distinct_payers{rail="mpp"} 1');
+  });
+
+  it("the_sdk_store_claims_and_drops_keys_under_this_rail", async () => {
+    const claims = new MemoryClaimStore();
+    const metrics = new Metrics();
+    const store = replayStore(claims, metrics);
+    const later = Date.now() + 60_000;
+
+    expect(await store.tryClaim?.("hash", later)).toBe(true);
+    expect(await store.tryClaim?.("hash", later)).toBe(false);
+    // Every claim is timed as its own step, apart from the charge around it.
+    await assertRecorded(
+      metrics,
+      'bx402_payment_step_duration_seconds_count{rail="mpp",step="claim"} 2',
+    );
+    // Recorded under the rail's own prefix, so it cannot collide with x402.
+    expect(await claims.tryClaim("mpp:hash", later)).toBeUndefined();
+
+    await store.delete("hash");
+    expect(await store.tryClaim?.("hash", later)).toBe(true);
+  });
+
+  it("the_sdk_store_refuses_reads_and_writes_it_is_never_meant_to_get", async () => {
+    // Only fee sponsorship reads and writes the store, and it is never set up.
+    // Failing like an unreachable store turns any such call into a 502.
+    const store = replayStore(new MemoryClaimStore(), new Metrics());
+    await expect(store.get("key")).rejects.toBeInstanceOf(ClaimStoreError);
+    await expect(store.put("key", 1)).rejects.toBeInstanceOf(ClaimStoreError);
+    await expect(
+      store.update("key", () => ({ op: "noop", result: undefined })),
+    ).rejects.toBeInstanceOf(ClaimStoreError);
   });
 });

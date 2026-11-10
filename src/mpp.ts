@@ -7,7 +7,7 @@
  */
 
 import { Challenge, Credential, Receipt } from "mppx";
-import { Mppx, tempo } from "mppx/server";
+import { Mppx, type Store, tempo } from "mppx/server";
 import * as Secp256k1 from "ox/Secp256k1";
 import { TxEnvelopeTempo } from "ox/tempo";
 import { request } from "undici";
@@ -23,6 +23,7 @@ import {
 import { createClient, http } from "viem/tempo";
 import { tempo as tempoMainnet, tempoModerato } from "viem/tempo/chains";
 import { ousd, pathusd, usdce } from "viem/tokens";
+import { type ClaimStore, ClaimStoreError } from "./claims/store.js";
 import type { MppConfig } from "./config.js";
 import type { Offer } from "./discovery.js";
 import { ENDPOINTS, findEndpoint } from "./endpoints.js";
@@ -176,7 +177,11 @@ export interface Client {
  * chain is refused. An unreachable endpoint or an unusable `MPP_SECRET_KEY` is
  * a startup misconfiguration.
  */
-export async function client(rail: MppConfig): Promise<Client> {
+export async function client(
+  rail: MppConfig,
+  claims: ClaimStore,
+  metrics: Metrics,
+): Promise<Client> {
   const chainId = await getChainId(rail.rpcUrl);
   const network = NETWORKS.get(chainId);
   if (network === undefined) {
@@ -190,7 +195,7 @@ export async function client(rail: MppConfig): Promise<Client> {
   }
   let handler: Handler;
   try {
-    handler = buildHandler(rail, network);
+    handler = buildHandler(rail, network, claims, metrics);
   } catch (err) {
     throw AppError.invalidConfig(`MPP: ${describe(err)}`);
   }
@@ -238,9 +243,10 @@ export async function challenge(
  * chain the endpoint reported, so the same client answers them all.
  *
  * One method per accepted token on that chain. Left to its defaults, the SDK
- * would accept stablecoins this service never offers.
+ * would accept stablecoins this service never offers. Replay claims go to the
+ * shared claim store, so a transaction one replica took is refused by the rest.
  */
-function buildHandler(rail: MppConfig, network: Network) {
+function buildHandler(rail: MppConfig, network: Network, claims: ClaimStore, metrics: Metrics) {
   const rpc = createClient({ chain: network.chain, transport: http(rail.rpcUrl) });
   return Mppx.create({
     realm: REALM,
@@ -250,9 +256,44 @@ function buildHandler(rail: MppConfig, network: Network) {
         getClient: () => rpc,
         chainId: network.chain.id,
         currencies: network.tokens.map((accepted) => accepted.address),
+        store: replayStore(claims, metrics),
       }),
     ],
   });
+}
+
+/**
+ * The claim store in the shape the SDK takes for replay protection, its keys
+ * marked as this rail's.
+ *
+ * A charge with no fee payer, the only kind this service takes, uses its store
+ * two ways: it claims each transaction before broadcasting it, and removes that
+ * claim when the broadcast fails. Those are the calls answered here. The SDK
+ * reads and writes the store only for fee sponsorship, which is never set up,
+ * so those calls fail like an unreachable store and the payment gets a 502.
+ *
+ * Each claim is timed here, the one place that sees it apart from the rest of
+ * the charge.
+ */
+export function replayStore(claims: ClaimStore, metrics: Metrics): Store.AtomicStore {
+  const unsupported = async (): Promise<never> => {
+    throw new ClaimStoreError(new Error("the claim store only claims and removes keys"));
+  };
+  const keyed = (key: string) => `${RAIL}:${key}`;
+  return {
+    get: unsupported,
+    put: unsupported,
+    update: unsupported,
+    delete: (key) => claims.drop(keyed(key)),
+    tryClaim: async (key, expires) => {
+      const started = performance.now();
+      try {
+        return (await claims.tryClaim(keyed(key), expires)) !== undefined;
+      } finally {
+        metrics.recordPaymentStep(RAIL, step.CLAIM, seconds(started));
+      }
+    },
+  };
 }
 
 /**
@@ -446,8 +487,8 @@ export function signerAddress(payload: TransactionPayload): string | undefined {
  *
  * - credential missing, unreadable, not a signed transaction, or rejected: `402`
  *   before anything is broadcast.
- * - the Tempo endpoint unreachable: `502`, since that is our failure not the
- *   payer's.
+ * - the Tempo endpoint or the replay claim store unreachable: `502`, since that
+ *   is our failure not the payer's.
  * - charged: the search runs and its response carries the receipt whatever its
  *   status, because the payment has already settled and cannot be taken back.
  */
@@ -511,6 +552,13 @@ export async function handle(
     receipt = await client.handler.broadcastCredential(parsed, { request: { ...charge } });
   } catch (err) {
     metrics.recordPaymentStep(RAIL, step.CHARGE, seconds(started));
+    // A claim store that cannot answer is our failure too, and the transaction
+    // was never broadcast.
+    if (causedBy(err, (cause) => cause instanceof ClaimStoreError)) {
+      metrics.recordFailure(RAIL, step.CLAIM, failure.UNREACHABLE);
+      log.error(`mpp replay claim failed: ${describe(err)}`);
+      return ended(outcome.NETWORK_UNAVAILABLE, gatewayError());
+    }
     if (endpointUnreachable(err)) {
       metrics.recordFailure(RAIL, step.CHARGE, failure.UNREACHABLE);
       log.error(`mpp charge failed: tempo endpoint unreachable: ${describe(err)}`);
@@ -559,18 +607,27 @@ function tokenFor(client: Client, parsed: Credential.Credential): ResolvedToken 
  * reached, rather than because the payment was bad.
  *
  * The SDK reports both as thrown errors and carries no code that separates them,
- * so the transport failure is recognized by the viem error underneath. The chain
- * is walked because the SDK wraps what it catches, and the depth is capped so a
- * self-referencing cause cannot spin here.
+ * so the transport failure is recognized by the viem error underneath.
  */
 function endpointUnreachable(err: unknown): boolean {
-  let cause: unknown = err;
-  for (let depth = 0; cause !== undefined && cause !== null && depth < 8; depth += 1) {
-    if (
+  return causedBy(
+    err,
+    (cause) =>
       cause instanceof HttpRequestError ||
       cause instanceof TimeoutError ||
-      cause instanceof SocketClosedError
-    ) {
+      cause instanceof SocketClosedError,
+  );
+}
+
+/**
+ * Whether `err` or anything in its cause chain `matches`. The chain is walked
+ * because the SDK wraps what it catches, and the depth is capped so a
+ * self-referencing cause cannot spin here.
+ */
+function causedBy(err: unknown, matches: (cause: unknown) => boolean): boolean {
+  let cause: unknown = err;
+  for (let depth = 0; cause !== undefined && cause !== null && depth < 8; depth += 1) {
+    if (matches(cause)) {
       return true;
     }
     cause = (cause as { cause?: unknown }).cause;

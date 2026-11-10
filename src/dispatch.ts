@@ -84,7 +84,7 @@ export async function context(
   const x402Client = config.x402 === undefined ? undefined : await x402.start(config.x402, claims);
   return {
     x402: x402Client,
-    mpp: config.mpp === undefined ? undefined : await mpp.client(config.mpp),
+    mpp: config.mpp === undefined ? undefined : await mpp.client(config.mpp, claims, metrics),
     screener,
     metrics,
   };
