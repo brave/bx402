@@ -25,7 +25,7 @@ import { findDefaultAsset, getDefaultAsset } from "@x402/evm";
 import { registerExactEvmScheme } from "@x402/evm/exact/server";
 import { base, baseSepolia } from "viem/chains";
 import type { Call } from "./calls.js";
-import { ClaimStore } from "./claims.js";
+import { ClaimStore } from "./claims/memory.js";
 import type { X402Config } from "./config.js";
 import type { Offer } from "./discovery.js";
 import { ENDPOINTS, findEndpoint, ICON_PATH } from "./endpoints.js";
@@ -278,7 +278,7 @@ export interface Client {
    * Claims over payment replay keys. A payment's key is claimed before any
    * facilitator or upstream call and held while the payment is in flight and
    * briefly after the facilitator decides on it, so one payment buys at most
-   * one search. The store's scope and bounds are documented in `claims.ts`.
+   * one search. The store's scope and bounds are documented in `claims/memory.ts`.
    */
   claims: ClaimStore;
   /** Whether the paid paths are offered to facilitator catalogs. */

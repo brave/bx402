@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ClaimStore, type ClaimToken } from "../src/claims.js";
+import { ClaimStore, type ClaimToken } from "../../src/claims/memory.js";
 
 /** An expiry comfortably in the future, for claims that must hold. */
 function later(): number {
