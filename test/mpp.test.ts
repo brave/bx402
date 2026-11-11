@@ -246,7 +246,7 @@ describe("mpp", () => {
         amount: "5000",
         currency: address,
         methodDetails: { chainId: MODERATO },
-        recipient: "0xbd9420A98a7Bd6B89765e5715e169481602D9c3d",
+        recipient: "0xFFa76529d7e733C7671190b374819d8eDA2b9D04",
       })),
     );
   });
@@ -264,7 +264,7 @@ describe("mpp", () => {
         amount: "0.005",
         chainId: chain,
         decimals: 6,
-        recipient: "0xbd9420A98a7Bd6B89765e5715e169481602D9c3d",
+        recipient: "0xFFa76529d7e733C7671190b374819d8eDA2b9D04",
       });
     }
     // Any other chain is refused rather than served with a default token.
