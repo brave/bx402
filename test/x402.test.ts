@@ -262,6 +262,67 @@ describe("x402", () => {
     ).toBe(failure.BAD_NONCE);
   });
 
+  it("decode_relays_only_the_eip3009_transfer", () => {
+    // Every offer is an eip3009 transfer, so the authorization and its
+    // signature are all that is relayed, whatever else the payload carried.
+    const decoded = decodeReadable(
+      paymentHeaders({
+        accepted: offersFor("/res/v1/web/search")[0],
+        payload: {
+          authorization: AUTHORIZATION,
+          signature: "0x00",
+          permit2Authorization: { from: `0x${"EF".repeat(20)}` },
+          other: true,
+        },
+      }),
+      REQUESTED,
+      true,
+    );
+    expect(decoded.payload.payload).toEqual({ authorization: AUTHORIZATION, signature: "0x00" });
+  });
+
+  it("the_verified_payer_must_be_the_one_the_payment_names", async () => {
+    // The facilitator reports the payer it verified, in whatever letter case.
+    const payWithVerifiedPayer = async (payer: string) => {
+      const built = await testClientOver({
+        verify: async () => ({ isValid: true, payer }),
+        settle: async () => SETTLED,
+        getSupported: async () => TEST_SUPPORT,
+      });
+      const metrics = new Metrics();
+      let searches = 0;
+      const response = await handle(
+        built,
+        undefined,
+        metrics,
+        "/res/v1/web/search",
+        REQUESTED,
+        paymentHeaders({
+          x402Version: 2,
+          accepted: offersFor("/res/v1/web/search")[0],
+          payload: { authorization: AUTHORIZATION },
+        }),
+        async () => {
+          searches++;
+          return new Response(JSON.stringify({ web: {} }), { status: 200 });
+        },
+      );
+      return { status: response.status, searches, metrics };
+    };
+
+    const other = await payWithVerifiedPayer(`0x${"EF".repeat(20)}`);
+    expect(other.status).toBe(402);
+    expect(other.searches).toBe(0);
+    await assertRecorded(
+      other.metrics,
+      'bx402_payment_failures_total{rail="x402",step="verify",reason="payer_mismatch"} 1',
+    );
+
+    const same = await payWithVerifiedPayer(AUTHORIZATION.from);
+    expect(same.status).toBe(200);
+    expect(same.searches).toBe(1);
+  });
+
   it("a_header_that_is_not_base64_json_cannot_be_read", () => {
     const decode = (header: string) =>
       decodePayment(new Headers({ "payment-signature": header }), REQUESTED, true);
