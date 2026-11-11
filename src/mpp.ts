@@ -78,7 +78,7 @@ const NETWORK_UNAVAILABLE = "payment network unavailable";
 const REALM = "bx402";
 
 /** The EVM treasury address that receives MPP payments. */
-const PAY_TO_EVM = "0xbd9420A98a7Bd6B89765e5715e169481602D9c3d";
+const PAY_TO_EVM = "0xFFa76529d7e733C7671190b374819d8eDA2b9D04";
 
 /**
  * How many decimals every accepted token carries, the scale every amount is

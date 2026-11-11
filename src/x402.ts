@@ -63,7 +63,7 @@ const PAYMENT_RECEIPT_HEADER = "payment-response";
 export const PAYMENT_REQUIRED_HEADER = "payment-required";
 
 /** The EVM treasury address that receives x402 payments (`payTo`). */
-const PAY_TO_EVM = "0xbd9420A98a7Bd6B89765e5715e169481602D9c3d";
+const PAY_TO_EVM = "0xFFa76529d7e733C7671190b374819d8eDA2b9D04";
 
 /** What this rail calls itself in metrics. */
 export const RAIL = "x402";

@@ -21,7 +21,7 @@ URL="http://localhost:8080/res/v1/web/search?q=base+sepolia"
 USDC="0x036CbD53842c5426634e7929541eC2318f3dCF7e"
 PRICE=5000
 # Mirrors PAY_TO_EVM in src/x402.ts.
-TREASURY="0xbd9420A98a7Bd6B89765e5715e169481602D9c3d"
+TREASURY="0xFFa76529d7e733C7671190b374819d8eDA2b9D04"
 # keccak("Transfer(address,address,uint256)"); both addresses are indexed, so the
 # amount is the log's data.
 TRANSFER_TOPIC="0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
