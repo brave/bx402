@@ -187,6 +187,8 @@ export const failure = {
   ALREADY_USED: "already_used",
   /** The proof was refused as bad: the signature, the scheme, or the network. */
   INVALID_PAYMENT: "invalid_payment",
+  /** The payer the facilitator checked is not the one the proof named to us. */
+  PAYER_MISMATCH: "payer_mismatch",
   /** The proof arrived outside the window it is valid for. */
   EXPIRED: "expired",
   /** Reported as still in flight, and never reported as done. */

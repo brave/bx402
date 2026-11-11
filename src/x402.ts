@@ -572,6 +572,11 @@ export async function handle(
       metrics.recordFailure(RAIL, step.VERIFY, refusedBecause(verified));
       return ended(outcome.REFUSED, paymentRejected(GENERIC_REJECTION));
     }
+    // The payer the facilitator verified must be the one the payment names.
+    if (verified.payer !== undefined && verified.payer.toLowerCase() !== payer) {
+      metrics.recordFailure(RAIL, step.VERIFY, failure.PAYER_MISMATCH);
+      return ended(outcome.REFUSED, paymentRejected(GENERIC_REJECTION));
+    }
 
     const response = await runSearch();
     if (!response.ok) {
@@ -688,9 +693,9 @@ const EIP3009_NONCE = /^0x[0-9a-fA-F]{64}$/;
  * offer, or it carries no well-formed eip3009 authorization.
  *
  * Every offer we advertise is an eip3009 transfer, so a payload without a
- * plausible `authorization` (a permit2 shape, say) is malformed for all of
- * them and is refused here, before it can reach the screener or the
- * facilitator carrying no identity.
+ * plausible `authorization` is malformed for all of them and is refused here,
+ * before it can reach the screener or the facilitator carrying no identity.
+ * What is relayed is rebuilt from that `authorization` and its signature alone.
  *
  * The resource the client echoed is replaced with `relayedResource`, and the
  * discovery declaration restated, before anything leaves for the facilitator: a
@@ -730,7 +735,8 @@ export function decodePayment(
   if (!isRecord(accepted)) {
     return failure.MISSING_OFFER;
   }
-  const authorization = isRecord(payload.payload) ? payload.payload.authorization : undefined;
+  const transfer = isRecord(payload.payload) ? payload.payload : undefined;
+  const authorization = transfer?.authorization;
   if (!isRecord(authorization)) {
     return failure.MISSING_AUTHORIZATION;
   }
@@ -742,6 +748,9 @@ export function decodePayment(
     return failure.BAD_NONCE;
   }
   const payer = from.toLowerCase();
+  // The transfer is relayed in the eip3009 shape the SDK client builds, so
+  // nothing the payer added beside the authorization goes on.
+  payload.payload = { authorization, signature: transfer?.signature };
   const echoed = isRecord(payload.extensions) ? payload.extensions : undefined;
   const relayed = listed ? relayedResource(requested) : undefined;
   delete payload.resource;
