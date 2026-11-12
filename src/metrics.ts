@@ -18,7 +18,7 @@ import {
   Registry,
 } from "@prometheus-io/client";
 import { Hono, type MiddlewareHandler } from "hono";
-import { findEndpoint } from "./endpoints.js";
+import { ENDPOINTS, findEndpoint } from "./endpoints.js";
 import { describe } from "./error.js";
 import { log } from "./log.js";
 import { PayerWindow } from "./payers.js";
@@ -339,6 +339,14 @@ export class Metrics {
       labelNames: ["version"],
       registers: [this.registry],
     }).set({ version: VERSION }, 1);
+
+    // Series whose labels are all known up front start at zero, for the reason
+    // `sells` gives.
+    for (const { path } of ENDPOINTS) {
+      for (const reason of Object.values(challenge)) {
+        this.challenges.inc({ endpoint: path, reason }, 0);
+      }
+    }
   }
 
   /**
@@ -386,6 +394,17 @@ export class Metrics {
    */
   recordPayer(rail: RailLabel, payer: string): void {
     this.payers.seen(rail, payer);
+  }
+
+  /**
+   * Start every screening decision at zero, for the reason `sells` gives. Only
+   * a deployment that screens calls this, so one that does not still shows no
+   * screening series at all.
+   */
+  screens(): void {
+    for (const decided of Object.values(screening)) {
+      this.screenings.inc({ outcome: decided }, 0);
+    }
   }
 
   /** Record what one address screen decided. */

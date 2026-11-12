@@ -75,7 +75,9 @@ export class RestrictedAddressScreener {
     private readonly client: S3Client,
     private readonly bucket: string,
     private readonly metrics: Metrics,
-  ) {}
+  ) {
+    metrics.screens();
+  }
 
   /**
    * Screen one identifier, exactly as given, within the screening deadline.

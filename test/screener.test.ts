@@ -51,6 +51,12 @@ afterEach(() => {
 });
 
 describe("screener", () => {
+  it("a_built_screener_starts_its_decisions_at_zero", async () => {
+    const metrics = new Metrics();
+    screenerAnswering(404, metrics);
+    await assertRecorded(metrics, 'bx402_screenings_total{outcome="allowed"} 0');
+  });
+
   it("require_allowed_maps_outcomes_to_refusals", async () => {
     // 200 is a list hit, 404 a miss, anything else means the list could not be
     // consulted.

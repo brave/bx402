@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { failure, Metrics, outcome, step } from "../src/metrics.js";
+import { challenge, failure, Metrics, outcome, screening, step } from "../src/metrics.js";
 import { VERSION } from "../src/version.js";
 import { assertNotRecorded, assertRecorded } from "./support.js";
 
@@ -12,6 +12,26 @@ describe("metrics", () => {
   it("the_exposition_ends_the_way_openmetrics_requires", async () => {
     const rendered = await new Metrics().render();
     expect(rendered.endsWith("# EOF\n")).toBe(true);
+  });
+
+  it("every_challenge_starts_at_zero", async () => {
+    const metrics = new Metrics();
+    for (const reason of Object.values(challenge)) {
+      await assertRecorded(
+        metrics,
+        `bx402_challenges_total{endpoint="/res/v1/web/search",reason="${reason}"} 0`,
+      );
+    }
+  });
+
+  it("screening_starts_at_zero_only_where_it_runs", async () => {
+    const metrics = new Metrics();
+    await assertNotRecorded(metrics, "bx402_screenings_total{");
+
+    metrics.screens();
+    for (const decided of Object.values(screening)) {
+      await assertRecorded(metrics, `bx402_screenings_total{outcome="${decided}"} 0`);
+    }
   });
 
   it("a_client_is_counted_under_the_name_it_sends_or_not_at_all", async () => {
