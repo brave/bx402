@@ -36,15 +36,26 @@ const OTHER = "other";
 /** The SDK's reason for a `pending` settlement, which it does not export. */
 const SETTLEMENT_PENDING = "settlement_pending";
 
-/** The two requests the facilitator decides. */
-type Step = "verify" | "settle";
-
 /**
- * How a request ended. `pending` is a settlement whose transaction was sent but
- * whose receipt did not arrive in time, and `error` is one the facilitator
- * could not decide.
+ * The two requests the facilitator decides, and how each can end. `pending` is
+ * a settlement whose transaction was sent but whose receipt did not arrive in
+ * time, and `error` is one the facilitator could not decide.
  */
-type Outcome = "valid" | "invalid" | "settled" | "refused" | "pending" | "error";
+const OUTCOMES = {
+  verify: ["valid", "invalid", "error"],
+  settle: ["settled", "refused", "pending", "error"],
+} as const;
+
+/** One of the requests the facilitator decides. */
+type Step = keyof typeof OUTCOMES;
+
+/** How a request ended. */
+type Outcome = (typeof OUTCOMES)[Step][number];
+
+/** Every step paired with each way it can end. */
+const KINDS = Object.entries(OUTCOMES).flatMap(([step, outcomes]) =>
+  outcomes.map((outcome) => ({ step, outcome })),
+);
 
 /** Everything the facilitator records, and the registry that renders it. */
 export class FacilitatorMetrics {
@@ -82,6 +93,13 @@ export class FacilitatorMetrics {
 
   constructor(settled: SettlementNetwork[]) {
     this.networks = new Set(settled.map(({ chain }) => networkId(chain)));
+    // A series that first appears already at one has no earlier value to rise
+    // from, so `increase()` would read the first request of each kind as nothing.
+    for (const network of [...this.networks, OTHER]) {
+      for (const { step, outcome } of KINDS) {
+        this.requests.inc({ step, network, outcome }, 0);
+      }
+    }
     this.registry.setContentType(openMetricsContentType);
     new Gauge({
       name: "x402_facilitator_build_info",

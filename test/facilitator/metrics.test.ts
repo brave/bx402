@@ -35,6 +35,28 @@ describe("facilitator metrics", () => {
     await assertRecorded(metrics(), `x402_facilitator_build_info{version="${VERSION}"} 1`);
   });
 
+  it("every_step_and_outcome_starts_at_zero_on_each_network", async () => {
+    const recorded = metrics();
+    // `other` too, so the first request for a network it does not settle shows.
+    const kinds = [
+      ["verify", "valid"],
+      ["verify", "invalid"],
+      ["verify", "error"],
+      ["settle", "settled"],
+      ["settle", "refused"],
+      ["settle", "pending"],
+      ["settle", "error"],
+    ];
+    for (const network of [BASE, "other"]) {
+      for (const [step, outcome] of kinds) {
+        await assertRecorded(
+          recorded,
+          `x402_facilitator_requests_total{step="${step}",network="${network}",outcome="${outcome}"} 0`,
+        );
+      }
+    }
+  });
+
   it("a_verify_is_counted_by_its_verdict", async () => {
     const recorded = metrics();
     await measured(service({}, true), recorded).verify(payload, on(BASE));
