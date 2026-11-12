@@ -69,11 +69,19 @@ const FREE_PATHS = new Set(["/health", "/openapi.json", "/llms.txt", "/icon.png"
 export type RailLabel = "x402" | "mpp";
 
 /**
- * What a request attempted: a rail, nothing at all, or both at once. The four
+ * What a request can attempt: a rail, nothing at all, or both at once. The four
  * values are spelled here rather than imported from the dispatcher, so the
- * label cannot drift into something unbounded.
+ * label cannot drift into something unbounded, and each client's series can
+ * start at zero.
  */
-export type Attempt = RailLabel | "none" | "both";
+const ATTEMPTS = ["none", "x402", "mpp", "both"] as const satisfies readonly (
+  | RailLabel
+  | "none"
+  | "both"
+)[];
+
+/** One of the `ATTEMPTS`. */
+export type Attempt = (typeof ATTEMPTS)[number];
 
 /**
  * Clients that name themselves in a `User-Agent`, matched on what the header
@@ -345,6 +353,11 @@ export class Metrics {
     for (const { path } of ENDPOINTS) {
       for (const reason of Object.values(challenge)) {
         this.challenges.inc({ endpoint: path, reason }, 0);
+      }
+    }
+    for (const client of [...CLIENTS, NO_CLIENT, OTHER]) {
+      for (const attempted of ATTEMPTS) {
+        this.clientRequests.inc({ client, attempted }, 0);
       }
     }
   }

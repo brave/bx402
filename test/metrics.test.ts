@@ -46,6 +46,18 @@ describe("metrics", () => {
     await assertRecorded(metrics, 'bx402_client_requests_total{client="none",attempted="none"} 1');
   });
 
+  it("every_known_client_starts_at_zero_for_every_attempt", async () => {
+    const metrics = new Metrics();
+    for (const client of ["purl", "mppx", "curl", "none", "other"]) {
+      for (const attempted of ["none", "x402", "mpp", "both"]) {
+        await assertRecorded(
+          metrics,
+          `bx402_client_requests_total{client="${client}",attempted="${attempted}"} 0`,
+        );
+      }
+    }
+  });
+
   it("a_client_cannot_name_itself_into_a_series_of_its_own", async () => {
     const metrics = new Metrics();
     metrics.recordClient("SomethingNobodyKnows/3.1", "mpp");
