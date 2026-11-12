@@ -55,6 +55,24 @@ const PAYMENT_RECEIPT_HEADER = "payment-receipt";
 export const RAIL = "mpp";
 
 /**
+ * Every way a payment on this rail can end, so each starts at zero in metrics.
+ * The charge settles before the search runs, so no MPP payment ends after it.
+ */
+export const OUTCOMES = [
+  outcome.SETTLED,
+  outcome.MALFORMED,
+  outcome.NO_OFFER,
+  outcome.UNSUPPORTED,
+  outcome.REFUSED,
+  outcome.DUPLICATE,
+  outcome.SCREENED_OUT,
+  outcome.NETWORK_UNAVAILABLE,
+] as const satisfies readonly Outcome[];
+
+/** One of the ways a payment on this rail can end. */
+type Ended = (typeof OUTCOMES)[number];
+
+/**
  * The payment method identifier MPP challenges carry. Discovery offers name
  * the same method, so a reader can match an offer to the challenge scheme
  * that pays it.
@@ -539,7 +557,7 @@ export async function handle(
   runSearch: () => Promise<Response>,
 ): Promise<Response> {
   // Every exit below records how the payment ended, so no path goes uncounted.
-  const ended = (label: Outcome, response: Response): Response => {
+  const ended = (label: Ended, response: Response): Response => {
     metrics.recordPayment(RAIL, endpoint, label);
     return response;
   };

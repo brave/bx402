@@ -82,6 +82,17 @@ export async function assertRecorded(metrics: MetricsSource, series: string): Pr
   expect(exposition, `missing \`${series}\` in:\n${exposition}`).toContain(series);
 }
 
+/**
+ * Assert that every series whose line contains `fragment` still reads zero, for
+ * proving something was never counted now that series start at zero.
+ */
+export async function assertNeverCounted(metrics: MetricsSource, fragment: string): Promise<void> {
+  const counted = (await metrics.render())
+    .split("\n")
+    .filter((line) => line.includes(fragment) && !line.endsWith(" 0"));
+  expect(counted).toEqual([]);
+}
+
 /** The inverse of `assertRecorded`, for proving something was never recorded. */
 export async function assertNotRecorded(metrics: MetricsSource, fragment: string): Promise<void> {
   const exposition = await metrics.render();

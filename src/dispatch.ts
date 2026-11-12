@@ -17,6 +17,7 @@
 import type { MiddlewareHandler } from "hono";
 import type { ClaimStore } from "./claims/store.js";
 import type { Config } from "./config.js";
+import { ENDPOINTS } from "./endpoints.js";
 import { AppError, emptyBody } from "./error.js";
 import { challenge, endpointLabel, type Metrics } from "./metrics.js";
 import * as mpp from "./mpp.js";
@@ -82,12 +83,22 @@ export async function context(
   // x402 starts first, so an unusable facilitator URL is reported before any
   // RPC traffic goes out.
   const x402Client = config.x402 === undefined ? undefined : await x402.start(config.x402, claims);
-  return {
-    x402: x402Client,
-    mpp: config.mpp === undefined ? undefined : await mpp.client(config.mpp, claims, metrics),
-    screener,
-    metrics,
-  };
+  const mppClient =
+    config.mpp === undefined ? undefined : await mpp.client(config.mpp, claims, metrics);
+
+  // Each offer is described in the same words its rail records a charge under.
+  for (const { path } of ENDPOINTS) {
+    if (x402Client !== undefined) {
+      const assets = x402.offers(x402Client, path).map((offer) => offer.description);
+      metrics.sells(x402.RAIL, path, x402.OUTCOMES, assets);
+    }
+    if (mppClient !== undefined) {
+      const assets = mpp.offers(mppClient, path).map((offer) => offer.description);
+      metrics.sells(mpp.RAIL, path, mpp.OUTCOMES, assets);
+    }
+  }
+
+  return { x402: x402Client, mpp: mppClient, screener, metrics };
 }
 
 /**

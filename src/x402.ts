@@ -68,6 +68,22 @@ const PAY_TO_EVM = "0xFFa76529d7e733C7671190b374819d8eDA2b9D04";
 /** What this rail calls itself in metrics. */
 export const RAIL = "x402";
 
+/** Every way a payment on this rail can end, so each starts at zero in metrics. */
+export const OUTCOMES = [
+  outcome.SETTLED,
+  outcome.MALFORMED,
+  outcome.NO_OFFER,
+  outcome.REFUSED,
+  outcome.DUPLICATE,
+  outcome.SCREENED_OUT,
+  outcome.NETWORK_UNAVAILABLE,
+  outcome.SETTLE_FAILED,
+  outcome.UPSTREAM_FAILED,
+] as const satisfies readonly Outcome[];
+
+/** One of the ways a payment on this rail can end. */
+type Ended = (typeof OUTCOMES)[number];
+
 /**
  * The payment method identifier discovery offers carry for this rail. Stated
  * apart from the metrics name, so relabeling one can never move the other.
@@ -486,7 +502,7 @@ export async function handle(
   runSearch: () => Promise<Response>,
 ): Promise<Response> {
   // Every exit below records how the payment ended, so no path goes uncounted.
-  const ended = (label: Outcome, response: Response): Response => {
+  const ended = (label: Ended, response: Response): Response => {
     metrics.recordPayment(RAIL, endpoint, label);
     return response;
   };

@@ -8,6 +8,7 @@ import { ENDPOINTS } from "../src/endpoints.js";
 import { Metrics } from "../src/metrics.js";
 import { searchClient } from "../src/search.js";
 import {
+  assertNeverCounted,
   assertNotRecorded,
   assertRecorded,
   buildApp,
@@ -688,7 +689,7 @@ describe("app", () => {
     const upstreamFailed = await paidX402(true, true, 500);
     expect(upstreamFailed.response.status).toBe(500);
     await assertPaymentOutcome(upstreamFailed.metrics, "x402", "upstream_failed");
-    await assertNotRecorded(upstreamFailed.metrics, "bx402_charged_base_units_total{");
+    await assertNeverCounted(upstreamFailed.metrics, "bx402_charged_base_units_total{");
 
     // Verified, then settlement declined.
     const unsettled = await paidX402(true, false, 200);
@@ -853,7 +854,7 @@ describe("app", () => {
       metrics,
       'bx402_payments_total{rail="x402",endpoint="/res/v1/web/search",outcome="refused"} 2',
     );
-    await assertNotRecorded(metrics, 'outcome="duplicate"');
+    await assertNeverCounted(metrics, 'outcome="duplicate"');
   });
 
   it("payments_with_different_nonces_do_not_collide", async () => {
@@ -921,7 +922,7 @@ describe("app", () => {
       metrics,
       'bx402_payments_total{rail="x402",endpoint="/res/v1/web/search",outcome="screened_out"} 2',
     );
-    await assertNotRecorded(metrics, 'outcome="duplicate"');
+    await assertNeverCounted(metrics, 'outcome="duplicate"');
   });
 
   it("blocked_signer_is_refused_before_any_call", async () => {

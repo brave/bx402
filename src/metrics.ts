@@ -398,6 +398,32 @@ export class Metrics {
     this.challenges.inc({ endpoint, reason });
   }
 
+  /**
+   * Start at zero every payment series a rail can record for one endpoint: one
+   * per outcome the rail can report, and one charge per asset it sells it in.
+   * An endpoint the rail sells in no asset is not sold on it, so it gets none.
+   *
+   * A series that first appears already at one has no earlier value to rise
+   * from, so `increase()` and `rate()` read its first payment as nothing.
+   * Without this, every new process would hide the first payment of each kind.
+   */
+  sells(
+    rail: RailLabel,
+    endpoint: string,
+    outcomes: readonly Outcome[],
+    assets: readonly string[],
+  ): void {
+    if (assets.length === 0) {
+      return;
+    }
+    for (const ended of outcomes) {
+      this.payments.inc({ rail, endpoint, outcome: ended }, 0);
+    }
+    for (const asset of assets) {
+      this.chargedBaseUnits.inc({ rail, endpoint, asset }, 0);
+    }
+  }
+
   /** Record how one payment ended. */
   recordPayment(rail: RailLabel, endpoint: string, ended: Outcome): void {
     this.payments.inc({ rail, endpoint, outcome: ended });

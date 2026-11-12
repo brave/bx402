@@ -7,7 +7,14 @@ import {
   type Rail,
   type UriParts,
 } from "../src/dispatch.js";
-import { buildContext, decodeChallenge, restoreNetwork, testConfig } from "./support.js";
+import {
+  assertNotRecorded,
+  assertRecorded,
+  buildContext,
+  decodeChallenge,
+  restoreNetwork,
+  testConfig,
+} from "./support.js";
 
 interface ClassifyCase {
   /** Label printed if the assertion fails. */
@@ -207,6 +214,29 @@ describe("dispatch", () => {
     expect(typeof extensions.mppx.info).toBe("object");
     // V2 clients read the headers, so the body stays empty.
     expect(await response.text()).toBe("");
+  });
+
+  it("each_enabled_rail_starts_its_own_outcomes_and_charges_at_zero", async () => {
+    const ctx = await buildContext(testConfig());
+    for (const [rail, asset] of [
+      ["x402", "USDC on Base Sepolia (testnet)"],
+      ["mpp", "OUSD on Tempo Testnet (Moderato)"],
+    ]) {
+      await assertRecorded(
+        ctx.metrics,
+        `bx402_charged_base_units_total{rail="${rail}",endpoint="${WEB_SEARCH_PATH}",asset="${asset}"} 0`,
+      );
+    }
+    // Each rail starts only the outcomes it can report: MPP settles before the
+    // search runs, so it never fails after it.
+    await assertRecorded(
+      ctx.metrics,
+      `bx402_payments_total{rail="x402",endpoint="${WEB_SEARCH_PATH}",outcome="upstream_failed"} 0`,
+    );
+    await assertNotRecorded(
+      ctx.metrics,
+      `rail="mpp",endpoint="${WEB_SEARCH_PATH}",outcome="upstream_failed"`,
+    );
   });
 
   it("cold_402_advertises_only_the_enabled_rail", async () => {

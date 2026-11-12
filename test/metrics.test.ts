@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { failure, Metrics, step } from "../src/metrics.js";
+import { failure, Metrics, outcome, step } from "../src/metrics.js";
 import { VERSION } from "../src/version.js";
 import { assertNotRecorded, assertRecorded } from "./support.js";
 
@@ -43,6 +43,32 @@ describe("metrics", () => {
 
     await assertRecorded(metrics, 'bx402_distinct_payers{rail="x402"} 2');
     await assertNotRecorded(metrics, "0xdeadbeef");
+  });
+
+  it("a_sold_endpoint_starts_the_rails_outcomes_at_zero_and_no_others", async () => {
+    const metrics = new Metrics();
+    metrics.sells(
+      "x402",
+      "/res/v1/web/search",
+      [outcome.SETTLED, outcome.REFUSED],
+      ["USDC on Base"],
+    );
+
+    for (const ended of [outcome.SETTLED, outcome.REFUSED]) {
+      await assertRecorded(
+        metrics,
+        `bx402_payments_total{rail="x402",endpoint="/res/v1/web/search",outcome="${ended}"} 0`,
+      );
+    }
+    await assertNotRecorded(metrics, `outcome="${outcome.UNSUPPORTED}"`);
+
+    // Sold in no asset means not sold on this rail at all.
+    metrics.sells("mpp", "/res/v1/web/search", [outcome.SETTLED], []);
+    await assertNotRecorded(metrics, 'rail="mpp"');
+    await assertRecorded(
+      metrics,
+      'bx402_charged_base_units_total{rail="x402",endpoint="/res/v1/web/search",asset="USDC on Base"} 0',
+    );
   });
 
   it("a_failure_is_counted_under_the_step_that_failed", async () => {
