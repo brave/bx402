@@ -251,13 +251,16 @@ function bazaarDeclaration(call: Call): Record<string, unknown> {
  * the binding. It only feeds the client's nonce, and the facilitator is what
  * checks the signature.
  *
- * `bazaar` rides alongside it when the deployment is listed: a facilitator that
- * keeps a catalog lists the path once a payment for it settles, and one that
- * keeps none ignores the key.
+ * `bazaar` rides alongside it, so an agent or a scanner reading the challenge
+ * learns how to call the path and what it returns. A facilitator that keeps a
+ * catalog lists the path once a payment for it settles, and one that keeps none
+ * ignores the key.
  */
-function routeExtensions(method: string, call: Call, listed: boolean): Record<string, unknown> {
-  const mppx = { info: { method }, schema: { type: "object" } };
-  return listed ? { mppx, bazaar: bazaarDeclaration(call) } : { mppx };
+function routeExtensions(method: string, call: Call): Record<string, unknown> {
+  return {
+    mppx: { info: { method }, schema: { type: "object" } },
+    bazaar: bazaarDeclaration(call),
+  };
 }
 
 /**
@@ -281,8 +284,6 @@ export interface Client {
    * one search. The store's scope and bounds are documented in `claims/store.ts`.
    */
   claims: ClaimStore;
-  /** Whether the paid paths are offered to facilitator catalogs. */
-  enableBazaar: boolean;
 }
 
 /**
@@ -301,7 +302,6 @@ export function client(rail: X402Config, claims: ClaimStore): Client {
     server: resourceServer(new HTTPFacilitatorClient({ url: rail.facilitatorUrl })),
     accepts: accepts(),
     claims,
-    enableBazaar: rail.enableBazaar,
   };
 }
 
@@ -404,7 +404,7 @@ export function challenge(
     error: PAYMENT_REQUIRED,
     resource: catalogResource(resource, endpoint.description),
     accepts: offers,
-    extensions: routeExtensions(method, endpoint.call, client.enableBazaar),
+    extensions: routeExtensions(method, endpoint.call),
   };
   try {
     return { name: PAYMENT_REQUIRED_HEADER, value: encodePaymentRequiredHeader(envelope) };
@@ -528,7 +528,7 @@ export async function handle(
     return response;
   };
 
-  const decoded = decodePayment(headers, requested, client.enableBazaar);
+  const decoded = decodePayment(headers, requested);
   if (typeof decoded === "string") {
     metrics.recordFailure(RAIL, step.DECODE, decoded);
     return ended(outcome.MALFORMED, paymentRejected(MALFORMED_PAYMENT));
@@ -738,13 +738,11 @@ const EIP3009_NONCE = /^0x[0-9a-fA-F]{64}$/;
  * discovery declaration restated, before anything leaves for the facilitator: a
  * catalog records a settled payment against the resource the payload names, so a
  * payer would otherwise choose how this service is listed. Both are dropped for a
- * request this service cannot name, and whenever `listed` is off, since a catalog
- * reads the pair.
+ * request this service cannot name, since a catalog reads the pair.
  */
 export function decodePayment(
   headers: Headers,
   requested: string,
-  listed: boolean,
 ):
   | {
       payload: PaymentPayload;
@@ -789,7 +787,7 @@ export function decodePayment(
   // nothing the payer added beside the authorization goes on.
   payload.payload = { authorization, signature: transfer?.signature };
   const echoed = isRecord(payload.extensions) ? payload.extensions : undefined;
-  const relayed = listed ? relayedResource(requested) : undefined;
+  const relayed = relayedResource(requested);
   delete payload.resource;
   delete echoed?.bazaar;
   if (relayed !== undefined) {

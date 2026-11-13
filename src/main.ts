@@ -30,8 +30,7 @@ async function run(): Promise<void> {
   log.info(
     config.x402 === undefined
       ? "x402 rail: disabled by ENABLED_RAILS"
-      : `x402 facilitator: ${config.x402.facilitatorUrl}` +
-          (config.x402.enableBazaar ? ", bazaar enabled" : ", bazaar disabled"),
+      : `x402 facilitator: ${config.x402.facilitatorUrl}`,
   );
   log.info(
     config.mpp === undefined
