@@ -116,8 +116,8 @@ const DESCRIPTION =
  */
 const CONTACT_EMAIL = "searchapi-support@brave.com";
 
-/** Where the project documents itself for a human reader. */
-const HOMEPAGE = "https://github.com/brave/bx402";
+/** The product page a catalog links as the service's website. */
+const HOMEPAGE = "https://brave.com/search/api";
 
 /**
  * Brave's reference for what each paid path accepts and returns. Query
