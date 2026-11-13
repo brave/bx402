@@ -180,8 +180,8 @@ importers:
         specifier: 3.1148.0
         version: 3.1148.0
       '@hono/node-server':
-        specifier: 2.1.5
-        version: 2.1.5(hono@4.13.14)
+        specifier: 2.1.6
+        version: 2.1.6(hono@4.13.16)
       '@prometheus-io/client':
         specifier: 0.16.1
         version: 0.16.1
@@ -195,11 +195,11 @@ importers:
         specifier: 2.29.0
         version: 2.29.0(typescript@7.0.2)
       hono:
-        specifier: 4.13.14
-        version: 4.13.14
+        specifier: 4.13.16
+        version: 4.13.16
       mppx:
         specifier: 0.13.6
-        version: 0.13.6(@x402/core@2.29.0)(hono@4.13.14)(typescript@7.0.2)(viem@2.57.3(typescript@7.0.2)(zod@4.6.7))
+        version: 0.13.6(@x402/core@2.29.0)(hono@4.13.16)(typescript@7.0.2)(viem@2.57.3(typescript@7.0.2)(zod@4.6.7))
       ox:
         specifier: 0.14.45
         version: 0.14.45(typescript@7.0.2)(zod@4.6.7)
@@ -383,8 +383,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@hono/node-server@2.1.5':
-    resolution: {integrity: sha512-MgP/I06GdvsilDspMk/qmRzpk8LOUStP6jFAbSRi40W09DhoyUn+Mj7eyKICPqeYKybOjVFLVIAQzvu1bfIa7Q==}
+  '@hono/node-server@2.1.6':
+    resolution: {integrity: sha512-p/KH9MnfNcsm3sR6x4lNgm5j+QN4Et8srKredl9DZfXiyZ1UQ3aQ2YVpFLbqktYN5JI+DB+VZFKM2PqE5hLKjQ==}
     engines: {node: '>=20'}
     peerDependencies:
       hono: ^4 || ^5.0.0-0
@@ -828,8 +828,8 @@ packages:
     resolution: {integrity: sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ==}
     engines: {node: '>=8'}
 
-  hono@4.13.14:
-    resolution: {integrity: sha512-yhRLQ21U6qa9Hsu2N7Qcbh8tE+WKEcoErjIo56LeSGiGXGp9sA7UpE86Ui9uexb61KakiGwuHMn2QdV7w6i6kQ==}
+  hono@4.13.16:
+    resolution: {integrity: sha512-AOLOEhvrV+iH92xXCnFr/5+3KjPKcI3xP63XJtX5spAnkznPdHijlIsUTpi7/9EhWqrTCekw5c5zh1K+YsVw7A==}
     engines: {node: '>=16.9.0'}
 
   isows@1.0.7:
@@ -1428,9 +1428,9 @@ snapshots:
   '@biomejs/cli-win32-x64@2.5.12':
     optional: true
 
-  '@hono/node-server@2.1.5(hono@4.13.14)':
+  '@hono/node-server@2.1.6(hono@4.13.16)':
     dependencies:
-      hono: 4.13.14
+      hono: 4.13.16
 
   '@jridgewell/resolve-uri@3.1.2': {}
 
@@ -1759,7 +1759,7 @@ snapshots:
 
   has-flag@4.0.0: {}
 
-  hono@4.13.14: {}
+  hono@4.13.16: {}
 
   isows@1.0.7(ws@8.21.0):
     dependencies:
@@ -1828,7 +1828,7 @@ snapshots:
     dependencies:
       obliterator: 1.6.1
 
-  mppx@0.13.6(@x402/core@2.29.0)(hono@4.13.14)(typescript@7.0.2)(viem@2.57.3(typescript@7.0.2)(zod@4.6.7)):
+  mppx@0.13.6(@x402/core@2.29.0)(hono@4.13.16)(typescript@7.0.2)(viem@2.57.3(typescript@7.0.2)(zod@4.6.7)):
     dependencies:
       '@stripe/stripe-js': 9.17.0
       eventsource-parser: 4.1.1
@@ -1838,7 +1838,7 @@ snapshots:
       zod: 4.6.7
     optionalDependencies:
       '@x402/core': 2.29.0
-      hono: 4.13.14
+      hono: 4.13.16
     transitivePeerDependencies:
       - typescript
 
