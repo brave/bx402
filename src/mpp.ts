@@ -13,7 +13,6 @@ import { TxEnvelopeTempo } from "ox/tempo";
 import { request } from "undici";
 import {
   type Chain,
-  formatUnits,
   HttpRequestError,
   parseUnits,
   type ResolvedToken,
@@ -26,7 +25,7 @@ import { ousd, pathusd, usdce } from "viem/tokens";
 import { type ClaimStore, ClaimStoreError, type ClaimToken } from "./claims/store.js";
 import type { MppConfig } from "./config.js";
 import type { Offer } from "./discovery.js";
-import { ENDPOINTS, findEndpoint } from "./endpoints.js";
+import { ENDPOINTS, findEndpoint, PRICE_DECIMALS, priceDollars } from "./endpoints.js";
 import { AppError, describe, isRecord, jsonError } from "./error.js";
 import { log } from "./log.js";
 import { failure, type Metrics, type Outcome, outcome, seconds, step } from "./metrics.js";
@@ -97,13 +96,6 @@ const REALM = "bx402";
 
 /** The EVM treasury address that receives MPP payments. */
 const PAY_TO_EVM = "0xFFa76529d7e733C7671190b374819d8eDA2b9D04";
-
-/**
- * How many decimals every accepted token carries, the scale every amount is
- * written in. The catalog prices in base units of this scale, and `client`
- * refuses to start on a token with any other.
- */
-const CURRENCY_DECIMALS = 6;
 
 /** The leading byte that marks a serialized Tempo transaction. */
 const TEMPO_TX_TYPE = "0x76";
@@ -205,10 +197,10 @@ export async function client(
   if (network === undefined) {
     throw AppError.invalidConfig(`MPP: unsupported Tempo chain ${chainId}`);
   }
-  const misscaled = network.tokens.find((accepted) => accepted.decimals !== CURRENCY_DECIMALS);
+  const misscaled = network.tokens.find((accepted) => accepted.decimals !== PRICE_DECIMALS);
   if (misscaled !== undefined) {
     throw AppError.invalidConfig(
-      `MPP: ${misscaled.symbol} carries ${misscaled.decimals} decimals, not ${CURRENCY_DECIMALS}`,
+      `MPP: ${misscaled.symbol} carries ${misscaled.decimals} decimals, not ${PRICE_DECIMALS}`,
     );
   }
   let handler: Handler;
@@ -354,8 +346,8 @@ export function replayStore(claims: ClaimStore, metrics: Metrics): Store.AtomicS
  * The charge for every paid path, priced from the catalog.
  *
  * The catalog holds base units, while a charge states a decimal amount that
- * `decimals` scales back to those same base units. The conversion runs through
- * `formatUnits` rather than arithmetic here, since writing the base units
+ * `decimals` scales back to those same base units. The amount comes from
+ * `priceDollars` rather than the base units, since writing the base units
  * straight into `amount` would overcharge by a factor of a million.
  */
 function charges(chainId: number): Map<string, Charge> {
@@ -363,9 +355,9 @@ function charges(chainId: number): Map<string, Charge> {
     ENDPOINTS.map((endpoint) => [
       endpoint.path,
       {
-        amount: formatUnits(BigInt(endpoint.priceBaseUnits), CURRENCY_DECIMALS),
+        amount: priceDollars(endpoint),
         chainId,
-        decimals: CURRENCY_DECIMALS,
+        decimals: PRICE_DECIMALS,
         recipient: PAY_TO_EVM,
       },
     ]),

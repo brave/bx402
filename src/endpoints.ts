@@ -6,6 +6,7 @@
  * The table is protocol-neutral: it names no rail and imports nothing from one.
  */
 
+import { formatUnits } from "viem";
 import {
   type Call,
   IMAGE_SEARCH,
@@ -24,6 +25,13 @@ import {
  * rail links to it, and both already read this module.
  */
 export const ICON_PATH = "/icon.png";
+
+/**
+ * How many decimals every accepted token carries, the scale `priceBaseUnits` is
+ * written in. MPP refuses to start on a token its chain reports at another
+ * scale. x402's tokens are fixed in code, and a test holds them to it.
+ */
+export const PRICE_DECIMALS = 6;
 
 /** Brave's Web Search and LLM Context rate, $5.00 per 1,000 requests. */
 const SEARCH_RATE = 5_000;
@@ -132,4 +140,12 @@ const BY_PATH = new Map<string, Endpoint>(ENDPOINTS.map((endpoint) => [endpoint.
 /** The endpoint served at `path`, or `undefined` for a path we do not sell. */
 export function findEndpoint(path: string): Endpoint | undefined {
   return BY_PATH.get(path);
+}
+
+/**
+ * The price of `requests` requests at `endpoint` in decimal dollars, such as
+ * "0.005" for one. Exact, since the sum is done in base units.
+ */
+export function priceDollars(endpoint: Endpoint, requests = 1): string {
+  return formatUnits(BigInt(endpoint.priceBaseUnits) * BigInt(requests), PRICE_DECIMALS);
 }

@@ -1,5 +1,6 @@
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import type { PaymentPayload } from "@x402/core/types";
+import { getDefaultAsset } from "@x402/evm";
 import {
   extractDiscoveryInfo,
   isValidIconUrl,
@@ -8,7 +9,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryClaimStore } from "../src/claims/memory.js";
 import { ClaimStoreError } from "../src/claims/store.js";
-import { ENDPOINTS, findEndpoint } from "../src/endpoints.js";
+import { ENDPOINTS, findEndpoint, PRICE_DECIMALS } from "../src/endpoints.js";
 import { failure, Metrics } from "../src/metrics.js";
 import {
   accepts,
@@ -228,6 +229,16 @@ describe("x402", () => {
       new MemoryClaimStore(),
     );
     expect(offers(built, "/res/v1/answers/search")).toEqual([]);
+  });
+
+  it("every_offered_token_carries_the_price_scale", () => {
+    // Prices are written in base units of a 6 decimal token. A token at another
+    // scale would charge the wrong price while every document still read right.
+    const tokens = [...accepts().values()].flat().map(({ network }) => getDefaultAsset(network));
+    expect(tokens.length).toBeGreaterThan(0);
+    for (const token of tokens) {
+      expect(token.decimals, token.symbol).toBe(PRICE_DECIMALS);
+    }
   });
 
   it("decode_reads_the_offer_the_payer_accepted", () => {

@@ -16,7 +16,7 @@
 import { readFileSync } from "node:fs";
 import { type Param, schemaOf } from "./calls.js";
 import type { Context } from "./dispatch.js";
-import { ENDPOINTS, type Endpoint } from "./endpoints.js";
+import { ENDPOINTS, type Endpoint, priceDollars } from "./endpoints.js";
 import { AppError, describe } from "./error.js";
 import * as mpp from "./mpp.js";
 import { VERSION } from "./version.js";
@@ -287,6 +287,5 @@ export function renderGuide(template: string, facts: GuideFacts): string {
 
 /** One path's row in the guide's price table: base units, and dollars per thousand. */
 function priceRow(endpoint: Endpoint): string {
-  const perThousand = (endpoint.priceBaseUnits * 1000) / 1_000_000;
-  return `| \`${endpoint.path}\` | ${endpoint.priceBaseUnits} | $${perThousand}/1k |`;
+  return `| \`${endpoint.path}\` | ${endpoint.priceBaseUnits} | $${priceDollars(endpoint, 1000)}/1k |`;
 }
