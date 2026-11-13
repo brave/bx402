@@ -329,15 +329,52 @@ export function resourceServer(facilitator: FacilitatorClient): x402ResourceServ
 }
 
 /**
+ * How long startup keeps asking the facilitator what it supports. A deploy
+ * stops the old facilitator before the new one starts, so it can be away for a
+ * few minutes. This outlasts that and stays inside the time the startup probe
+ * gives the service.
+ */
+const SUPPORT_DEADLINE_MS = 180_000;
+
+/** The wait before asking again, doubled after each failure up to the cap. */
+const SUPPORT_FIRST_DELAY_MS = 1_000;
+const SUPPORT_MAX_DELAY_MS = 15_000;
+
+/**
+ * Load what the facilitator supports into `server`, asking again with a
+ * growing wait while that fails, for up to `deadlineMs`. The last failure is
+ * thrown once the next wait would pass the deadline.
+ */
+export async function loadSupported(
+  server: x402ResourceServer,
+  deadlineMs = SUPPORT_DEADLINE_MS,
+): Promise<void> {
+  const deadline = Date.now() + deadlineMs;
+  for (let delay = SUPPORT_FIRST_DELAY_MS; ; delay = Math.min(delay * 2, SUPPORT_MAX_DELAY_MS)) {
+    try {
+      await server.initialize();
+      return;
+    } catch (err) {
+      if (Date.now() + delay > deadline) {
+        throw err;
+      }
+      log.warn(`x402 facilitator not ready, asking again in ${delay / 1000}s: ${describe(err)}`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
+/**
  * Build the client and load what the facilitator supports, which the resource
  * server routes payments by. Only offers the facilitator can settle are kept,
  * so a client never picks one that verify would refuse. A facilitator that
- * cannot be reached, or settles none of our offers, stops startup.
+ * stays unreachable past the retry window, or settles none of our offers,
+ * stops startup.
  */
 export async function start(rail: X402Config, claims: ClaimStore): Promise<Client> {
   const built = client(rail, claims);
   try {
-    await built.server.initialize();
+    await loadSupported(built.server);
   } catch (err) {
     throw AppError.invalidConfig(`X402_FACILITATOR_URL: ${describe(err)}`);
   }
