@@ -27,7 +27,7 @@ import { base, baseSepolia } from "viem/chains";
 import { type Call, schemaOf } from "./calls.js";
 import type { ClaimStore, ClaimToken } from "./claims/store.js";
 import type { X402Config } from "./config.js";
-import type { Offer } from "./discovery.js";
+import type { Offer, Protocol } from "./discovery.js";
 import { ENDPOINTS, findEndpoint, ICON_PATH } from "./endpoints.js";
 import { AppError, describe, isRecord, jsonError } from "./error.js";
 import { log } from "./log.js";
@@ -89,6 +89,9 @@ type Ended = (typeof OUTCOMES)[number];
  * apart from the metrics name, so relabeling one can never move the other.
  */
 const X402_METHOD = "x402";
+
+/** How the discovery document names this rail among a path's payment protocols. */
+export const PROTOCOL: Protocol = { x402: {} };
 
 /**
  * The networks this rail sells on, in the order offers are advertised: the

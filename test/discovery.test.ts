@@ -122,6 +122,25 @@ describe("discovery", () => {
     expect(doc["x-service-info"].docs.llms).toBe(GUIDE_PATH);
   });
 
+  it("every_paid_path_states_its_dollar_price", async () => {
+    const doc = await documentFor();
+    for (const endpoint of ENDPOINTS) {
+      // Every path sells at Brave's search rate, $5 per 1,000 requests, stated
+      // in decimal dollars unlike the offers' base units.
+      const price = doc.paths[endpoint.path]?.get["x-payment-info"]?.price;
+      expect(price, endpoint.path).toEqual({ mode: "fixed", currency: "USD", amount: "0.005" });
+    }
+  });
+
+  it("the_protocols_name_exactly_the_enabled_rails", async () => {
+    const protocolsOf = async (overrides: Partial<Config>) =>
+      (await documentFor(overrides)).paths[WEB_SEARCH_PATH]?.get["x-payment-info"]?.protocols;
+    const mppProtocol = { mpp: { method: "tempo", intent: "charge", currency: "USD" } };
+    expect(await protocolsOf({})).toEqual([{ x402: {} }, mppProtocol]);
+    expect(await protocolsOf({ mpp: undefined })).toEqual([{ x402: {} }]);
+    expect(await protocolsOf({ x402: undefined })).toEqual([mppProtocol]);
+  });
+
   it("every_paid_path_states_its_query_parameters_and_response", async () => {
     const doc = await documentFor();
     for (const endpoint of ENDPOINTS) {

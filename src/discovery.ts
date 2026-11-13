@@ -54,6 +54,24 @@ export interface Offer {
   description: string;
 }
 
+/**
+ * One payment protocol a path accepts, keyed by the protocol's name, as
+ * x402scan's discovery profile defines it. Each rail states its own.
+ */
+export type Protocol = Readonly<Record<string, Readonly<Record<string, string>>>>;
+
+/**
+ * The price of one request, in dollars. Every operation charges a fixed price,
+ * and the decimal amount sits beside the offers' base units so a reader can
+ * budget without knowing a token's decimals.
+ */
+interface Price {
+  mode: "fixed";
+  currency: "USD";
+  /** Decimal dollars, such as "0.005". */
+  amount: string;
+}
+
 /** Where the project documents itself for a human reader. */
 const HOMEPAGE = "https://github.com/brave/bx402";
 
@@ -79,6 +97,16 @@ interface ResponseObject {
   content?: Record<string, { schema: Record<string, unknown>; example: unknown }>;
 }
 
+/**
+ * How a path is paid for. `offers` is MPP's payment discovery shape; `price`
+ * and `protocols` are x402scan's. Readers of either ignore the other's fields.
+ */
+interface PaymentInfo {
+  price: Price;
+  protocols: Protocol[];
+  offers: Offer[];
+}
+
 /** One paid path's `get` operation, as far as the document states it. */
 interface Operation {
   summary: string;
@@ -88,7 +116,7 @@ interface Operation {
    * at least one offer, and a document must not advertise what cannot be
    * paid. The `402` declaration below stays either way.
    */
-  "x-payment-info"?: { offers: Offer[] };
+  "x-payment-info"?: PaymentInfo;
   responses: Record<string, ResponseObject>;
 }
 
@@ -142,10 +170,16 @@ export function document(ctx: Context): DiscoveryDocument {
  */
 function operation(ctx: Context, endpoint: Endpoint): Operation {
   const { call } = endpoint;
-  const offers = [
-    ...(ctx.x402 === undefined ? [] : x402.offers(ctx.x402, endpoint.path)),
-    ...(ctx.mpp === undefined ? [] : mpp.offers(ctx.mpp, endpoint.path)),
-  ];
+  const rails = [
+    {
+      protocol: x402.PROTOCOL,
+      offers: ctx.x402 === undefined ? [] : x402.offers(ctx.x402, endpoint.path),
+    },
+    {
+      protocol: mpp.PROTOCOL,
+      offers: ctx.mpp === undefined ? [] : mpp.offers(ctx.mpp, endpoint.path),
+    },
+  ].filter((rail) => rail.offers.length > 0);
   const stated: Operation = {
     summary: endpoint.description,
     parameters: Object.entries(call.params).map(([name, param]) => {
@@ -170,8 +204,12 @@ function operation(ctx: Context, endpoint: Endpoint): Operation {
       "402": { description: "Payment Required" },
     },
   };
-  if (offers.length > 0) {
-    stated["x-payment-info"] = { offers };
+  if (rails.length > 0) {
+    stated["x-payment-info"] = {
+      price: { mode: "fixed", currency: "USD", amount: priceDollars(endpoint) },
+      protocols: rails.map((rail) => rail.protocol),
+      offers: rails.flatMap((rail) => rail.offers),
+    };
   }
   return stated;
 }

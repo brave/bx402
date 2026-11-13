@@ -24,7 +24,7 @@ import { tempo as tempoMainnet, tempoModerato } from "viem/tempo/chains";
 import { ousd, pathusd, usdce } from "viem/tokens";
 import { type ClaimStore, ClaimStoreError, type ClaimToken } from "./claims/store.js";
 import type { MppConfig } from "./config.js";
-import type { Offer } from "./discovery.js";
+import type { Offer, Protocol } from "./discovery.js";
 import { ENDPOINTS, findEndpoint, PRICE_DECIMALS, priceDollars } from "./endpoints.js";
 import { AppError, describe, isRecord, jsonError } from "./error.js";
 import { log } from "./log.js";
@@ -77,6 +77,14 @@ type Ended = (typeof OUTCOMES)[number];
  * that pays it.
  */
 const TEMPO_METHOD = "tempo";
+
+/**
+ * How the discovery document names this rail among a path's payment protocols.
+ * Every token the rail accepts is a dollar stablecoin, so the currency is USD.
+ */
+export const PROTOCOL: Protocol = {
+  mpp: { method: TEMPO_METHOD, intent: "charge", currency: "USD" },
+};
 
 /**
  * Shared message for every refused payment, so a missing, malformed,
