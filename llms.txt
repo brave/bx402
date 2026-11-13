@@ -63,16 +63,23 @@ each path accepts.
 
 ## Discovery
 
-`GET /openapi.json` serves an OpenAPI 3.1 document listing every paid path.
-Each operation carries an `x-payment-info` extension with the offers the
-deployment's rails advertise: `intent`, `method` (the payment method the
-matching challenge names), `amount` in base units, `currency` as the token
-address, and a `description` naming the token and chain in words. The recipient
-is not in the document; it comes from the `402` challenge at pay time.
+`GET /openapi.json` serves an OpenAPI 3.1 document listing every paid path,
+with its query parameters and the shape of its JSON response. Each operation
+carries an `x-payment-info` extension:
 
-The offers mirror the rails the deployment has enabled: a disabled rail's
-offers are absent, and a deployment with payments paused lists every path
-with its `402` declared and no offers at all.
+- `price`: the price of one request in decimal US dollars, such as `0.005`.
+- `protocols`: the payment protocols the path accepts, such as `x402`.
+- `offers`: one entry per accepted token, with `intent`, `method` (the payment
+  method the matching challenge names), `amount` in the token's base units,
+  `currency` as the token address, and a `description` naming the token and
+  chain in words.
+
+The recipient is not in the document; it comes from the `402` challenge at pay
+time.
+
+The protocols and offers mirror the rails the deployment has enabled: a
+disabled rail is absent, and a deployment with payments paused lists every path
+with its `402` declared and no `x-payment-info` at all.
 
 The document is cached for five minutes (`Cache-Control: public, max-age=300`)
 and is advisory. The `402` is authoritative.

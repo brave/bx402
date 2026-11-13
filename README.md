@@ -142,8 +142,10 @@ its own price.
 
 ## Discovery
 
-`GET /openapi.json` serves a machine-readable description of every paid path and the
-offers each enabled rail advertises, following MPP's payment discovery draft.
+`GET /openapi.json` serves a machine-readable description of every paid path: its query
+parameters, the shape of its response, its price in dollars, the payment protocols it takes,
+and the offers each enabled rail advertises. It follows both MPP's payment discovery draft
+and x402scan's discovery profile.
 `GET /llms.txt` serves the buyer's guide in prose, linked from the document's
 `docs.llms`. The guide is rendered for the deployment serving it, so it names only that
 deployment's origin, rails, and networks. Both are free and cached for five minutes;
@@ -157,7 +159,7 @@ Any other value stops startup.
 
 The challenge's `resource` also names the service for a catalog: `serviceName`, `tags`, and
 an `iconUrl` pointing at `GET /icon.png`, a free route on the same origin that serves the
-Brave logo.
+Brave logo. The same logo is also served at `GET /favicon.png` for a catalog that looks there.
 
 ## Networks
 
