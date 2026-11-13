@@ -122,6 +122,47 @@ describe("discovery", () => {
     expect(doc["x-service-info"].docs.llms).toBe(GUIDE_PATH);
   });
 
+  it("every_paid_path_states_its_query_parameters_and_response", async () => {
+    const doc = await documentFor();
+    for (const endpoint of ENDPOINTS) {
+      const operation = doc.paths[endpoint.path]?.get;
+      // x402scan refuses a paid path without an input and an output schema.
+      expect(operation?.parameters.length, endpoint.path).toBeGreaterThan(0);
+      for (const parameter of operation?.parameters ?? []) {
+        expect(parameter.in, `${endpoint.path} ${parameter.name}`).toBe("query");
+      }
+      const json = operation?.responses["200"]?.content?.["application/json"];
+      expect(json?.schema, endpoint.path).toMatchObject({ type: "object" });
+      expect(json?.example, endpoint.path).toEqual(endpoint.call.response);
+    }
+
+    const parameter = (path: string, name: string) =>
+      doc.paths[path]?.get.parameters.find((stated) => stated.name === name);
+    expect(parameter(WEB_SEARCH_PATH, "q")).toEqual({
+      name: "q",
+      in: "query",
+      required: true,
+      description: "Search query",
+      schema: { type: "string", maxLength: 600 },
+    });
+    expect(parameter(WEB_SEARCH_PATH, "count")).toMatchObject({ required: false });
+    // Repeated as ids=a&ids=b, which is OpenAPI's default for a query array.
+    expect(parameter("/res/v1/local/pois", "ids")).toMatchObject({
+      required: true,
+      description: expect.stringContaining("Repeat as ids=a&ids=b"),
+      schema: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 20 },
+    });
+    // Place search takes q or a location, so no single parameter is required.
+    const place = doc.paths["/res/v1/local/place_search"]?.get.parameters ?? [];
+    expect(place.filter((stated) => stated.required)).toEqual([]);
+
+    const web = doc.paths[WEB_SEARCH_PATH]?.get.responses["200"]?.content?.["application/json"];
+    expect(web?.schema).toMatchObject({
+      type: "object",
+      properties: { web: { type: "object", properties: { results: { type: "array" } } } },
+    });
+  });
+
   it("a_disabled_rail_is_not_advertised", async () => {
     const x402Only = await documentFor({ mpp: undefined });
     expect(offersOf(x402Only, WEB_SEARCH_PATH).map((offer) => offer.method)).toEqual([

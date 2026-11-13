@@ -2,7 +2,8 @@
  * Service discovery: the machine-readable description of what this service
  * sells and how to pay for it.
  *
- * The shapes here follow MPP's payment discovery draft, which fixes where the
+ * The shapes here follow MPP's payment discovery draft and x402scan's discovery
+ * profile (https://x402scan.com/discovery/spec), which agree on where the
  * document lives: a discovery-aware client fetches `/openapi.json` and looks
  * nowhere else. The document links a buyer's guide in prose at `/llms.txt`.
  * Discovery is advisory; the runtime `402` challenge stays authoritative for
@@ -13,6 +14,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { type Param, schemaOf } from "./calls.js";
 import type { Context } from "./dispatch.js";
 import { ENDPOINTS, type Endpoint } from "./endpoints.js";
 import { AppError, describe } from "./error.js";
@@ -61,16 +63,33 @@ const HOMEPAGE = "https://github.com/brave/bx402";
  */
 const API_REFERENCE = "https://api-dashboard.search.brave.com/documentation";
 
+/** One query parameter of a paid path, in OpenAPI's parameter shape. */
+interface Parameter {
+  name: string;
+  in: "query";
+  required: boolean;
+  /** What the parameter means, where readers that list parameters show it. */
+  description?: string;
+  schema: Param;
+}
+
+/** One response an operation declares, with its JSON shape when known. */
+interface ResponseObject {
+  description: string;
+  content?: Record<string, { schema: Record<string, unknown>; example: unknown }>;
+}
+
 /** One paid path's `get` operation, as far as the document states it. */
 interface Operation {
   summary: string;
+  parameters: Parameter[];
   /**
    * Absent rather than empty when no rail is enabled: the extension requires
    * at least one offer, and a document must not advertise what cannot be
    * paid. The `402` declaration below stays either way.
    */
   "x-payment-info"?: { offers: Offer[] };
-  responses: Record<string, { description: string }>;
+  responses: Record<string, ResponseObject>;
 }
 
 /** The discovery document's shape, as far as this service states it. */
@@ -117,18 +136,37 @@ export function document(ctx: Context): DiscoveryDocument {
 }
 
 /**
- * One paid path's operation: each enabled rail's offers, in the order the
- * cold `402` lists the rails, with x402's network order kept inside its slice.
+ * One paid path's operation: how to call it, what it returns, and each enabled
+ * rail's offers, in the order the cold `402` lists the rails, with x402's
+ * network order kept inside its slice.
  */
 function operation(ctx: Context, endpoint: Endpoint): Operation {
+  const { call } = endpoint;
   const offers = [
     ...(ctx.x402 === undefined ? [] : x402.offers(ctx.x402, endpoint.path)),
     ...(ctx.mpp === undefined ? [] : mpp.offers(ctx.mpp, endpoint.path)),
   ];
   const stated: Operation = {
     summary: endpoint.description,
+    parameters: Object.entries(call.params).map(([name, param]) => {
+      // Moved out of the schema, since readers show a parameter's own
+      // description and skip the one inside its schema.
+      const { description, ...schema } = param;
+      return {
+        name,
+        in: "query",
+        required: call.required.includes(name),
+        ...(typeof description === "string" ? { description } : {}),
+        schema,
+      };
+    }),
     responses: {
-      "200": { description: "Successful response" },
+      "200": {
+        description: "Successful response",
+        content: {
+          "application/json": { schema: schemaOf(call.response), example: call.response },
+        },
+      },
       "402": { description: "Payment Required" },
     },
   };
