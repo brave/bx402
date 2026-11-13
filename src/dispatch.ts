@@ -86,6 +86,12 @@ export async function context(
   const mppClient =
     config.mpp === undefined ? undefined : await mpp.client(config.mpp, claims, metrics);
 
+  if (x402Client !== undefined) {
+    metrics.fails(x402.RAIL);
+  }
+  if (mppClient !== undefined) {
+    metrics.fails(mpp.RAIL);
+  }
   // Each offer is described in the same words its rail records a charge under.
   for (const { path } of ENDPOINTS) {
     if (x402Client !== undefined) {

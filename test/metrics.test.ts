@@ -103,6 +103,22 @@ describe("metrics", () => {
     );
   });
 
+  it("every_failure_of_a_rail_starts_at_zero_and_no_other_rail", async () => {
+    const metrics = new Metrics();
+    await assertNotRecorded(metrics, "bx402_payment_failures_total{");
+
+    metrics.fails("x402");
+    for (const failed of Object.values(step)) {
+      for (const reason of Object.values(failure)) {
+        await assertRecorded(
+          metrics,
+          `bx402_payment_failures_total{rail="x402",step="${failed}",reason="${reason}"} 0`,
+        );
+      }
+    }
+    await assertNotRecorded(metrics, 'bx402_payment_failures_total{rail="mpp"');
+  });
+
   it("a_failure_is_counted_under_the_step_that_failed", async () => {
     const metrics = new Metrics();
     metrics.recordFailure("x402", step.SETTLE, failure.ALREADY_USED);

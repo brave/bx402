@@ -456,6 +456,19 @@ export class Metrics {
     }
   }
 
+  /**
+   * Start every failure a rail can record at zero, each step with each reason,
+   * for the reason `sells` gives. Not every pair can happen, and one that never
+   * does stays at zero.
+   */
+  fails(rail: RailLabel): void {
+    for (const failed of Object.values(step)) {
+      for (const reason of Object.values(failure)) {
+        this.paymentFailures.inc({ rail, step: failed, reason }, 0);
+      }
+    }
+  }
+
   /** Record how one payment ended. */
   recordPayment(rail: RailLabel, endpoint: string, ended: Outcome): void {
     this.payments.inc({ rail, endpoint, outcome: ended });

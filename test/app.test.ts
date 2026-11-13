@@ -1024,7 +1024,7 @@ describe("app", () => {
     mock.assertNoPendingInterceptors();
     await assertPaymentOutcome(metrics, "mpp", "screened_out");
     // Refused before the charge, so nothing was attempted on chain.
-    await assertNotRecorded(metrics, 'step="charge"');
+    await assertNeverCounted(metrics, 'step="charge"');
   });
 
   it("mpp_refusals_record_their_own_outcomes", async () => {
@@ -1080,7 +1080,7 @@ describe("app", () => {
     expect(response.status).toBe(402);
     await assertPaymentOutcome(metrics, "mpp", "screened_out");
     // Refused before the charge, so nothing was attempted on chain.
-    await assertNotRecorded(metrics, 'step="charge"');
+    await assertNeverCounted(metrics, 'step="charge"');
   });
 
   it("dispatch_routes_by_payment_headers", async () => {
