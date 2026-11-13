@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import type { Hono } from "hono";
 import { MockAgent } from "undici";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { app, banner } from "../src/app.js";
 import { MemoryClaimStore } from "../src/claims/memory.js";
 import { ENDPOINTS } from "../src/endpoints.js";
@@ -51,6 +51,7 @@ afterEach(async () => {
   agent = undefined;
   restoreNetwork();
   restoreS3();
+  vi.useRealTimers();
 });
 
 /**
@@ -455,7 +456,9 @@ describe("app", () => {
   it("app_rejects_a_facilitator_it_cannot_load_support_from", async () => {
     // The rail routes payments by what the facilitator supports, so a
     // facilitator that errors, supports nothing, or answers nothing (the mock
-    // network refuses the request) aborts startup.
+    // network refuses the request) aborts startup once the time startup gives
+    // it to come up has passed.
+    vi.useFakeTimers({ toFake: ["setTimeout", "Date"] });
     const x402Only = testConfig({ mpp: undefined });
     const replies: [string, { status: number; body: object } | undefined][] = [
       ["an error", { status: 503, body: { error: "unavailable" } }],
@@ -474,10 +477,12 @@ describe("app", () => {
       if (reply !== undefined) {
         pool.intercept({ method: "GET", path: "/supported" }).reply(reply.status, reply.body);
       }
-      await expect(
+      const started = expect(
         app(x402Only, undefined, new MemoryClaimStore(), new Metrics()),
         label,
       ).rejects.toThrow("X402_FACILITATOR_URL");
+      await vi.advanceTimersByTimeAsync(180_000);
+      await started;
       restoreNetwork();
     }
   });

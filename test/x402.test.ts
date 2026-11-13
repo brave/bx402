@@ -5,7 +5,7 @@ import {
   isValidIconUrl,
   validateDiscoveryExtension,
 } from "@x402/extensions/bazaar";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryClaimStore } from "../src/claims/memory.js";
 import { ClaimStoreError } from "../src/claims/store.js";
 import { ENDPOINTS, findEndpoint } from "../src/endpoints.js";
@@ -16,8 +16,10 @@ import {
   client,
   decodePayment,
   handle,
+  loadSupported,
   offers,
   PAYMENT_REQUIRED_HEADER,
+  resourceServer,
 } from "../src/x402.js";
 import {
   assertRecorded,
@@ -1026,5 +1028,60 @@ describe("x402", () => {
     const unanswered = await sendTwice(undefined);
     expect(unanswered.statuses).toEqual([502, 502]);
     expect(unanswered.searches).toBe(2);
+  });
+});
+
+describe("loadSupported", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** A resource server over a facilitator that answers `getSupported` from `answer`. */
+  function serverAnswering(answer: () => Promise<typeof TEST_SUPPORT>) {
+    return resourceServer({
+      verify: async () => {
+        throw new Error("startup never verifies");
+      },
+      settle: async () => {
+        throw new Error("startup never settles");
+      },
+      getSupported: answer,
+    });
+  }
+
+  it("asks_again_until_the_facilitator_answers", async () => {
+    vi.useFakeTimers();
+    let asked = 0;
+    const server = serverAnswering(async () => {
+      asked += 1;
+      if (asked < 3) {
+        throw new TypeError("fetch failed");
+      }
+      return TEST_SUPPORT;
+    });
+
+    const loaded = loadSupported(server);
+    // Waits of 1s and 2s come before the third request.
+    await vi.advanceTimersByTimeAsync(3_000);
+    await loaded;
+
+    expect(asked).toBe(3);
+  });
+
+  it("gives_up_once_the_next_wait_would_pass_the_deadline", async () => {
+    vi.useFakeTimers();
+    let asked = 0;
+    const server = serverAnswering(async () => {
+      asked += 1;
+      throw new TypeError("fetch failed");
+    });
+
+    const loaded = loadSupported(server, 10_000);
+    const rejected = expect(loaded).rejects.toThrow("no supported payment kinds");
+    await vi.advanceTimersByTimeAsync(10_000);
+    await rejected;
+
+    // Waits of 1s, 2s and 4s fit inside 10s, and the next one of 8s would not.
+    expect(asked).toBe(4);
   });
 });
