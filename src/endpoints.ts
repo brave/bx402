@@ -27,6 +27,12 @@ import {
 export const ICON_PATH = "/icon.png";
 
 /**
+ * Where the service icon is served again under the name sites use for their
+ * own icon, for a catalog that looks there rather than reading `iconUrl`.
+ */
+export const FAVICON_PATH = "/favicon.png";
+
+/**
  * How many decimals every accepted token carries, the scale `priceBaseUnits` is
  * written in. MPP refuses to start on a token its chain reports at another
  * scale. x402's tokens are fixed in code, and a test holds them to it.

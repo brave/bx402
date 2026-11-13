@@ -228,10 +228,10 @@ describe("app", () => {
     );
   });
 
-  it("the_icon_is_served_free_at_icon_png", async () => {
+  it.each(["/icon.png", "/favicon.png"])("the_icon_is_served_free_at_%s", async (path) => {
     const metrics = new Metrics();
     const hono = await buildApp(testConfig(), undefined, metrics);
-    const response = await hono.request("/icon.png");
+    const response = await hono.request(path);
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("image/png");
@@ -245,13 +245,13 @@ describe("app", () => {
       Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     );
 
-    const head = await hono.request("/icon.png", { method: "HEAD" });
+    const head = await hono.request(path, { method: "HEAD" });
     expect(head.headers.get("content-type")).toBe("image/png");
     expect(await head.text()).toBe("");
 
     await assertRecorded(
       metrics,
-      'bx402_http_requests_total{endpoint="/icon.png",method="GET",status="200"} 1',
+      `bx402_http_requests_total{endpoint="${path}",method="GET",status="200"} 1`,
     );
   });
 
