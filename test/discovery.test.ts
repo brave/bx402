@@ -115,6 +115,8 @@ describe("discovery", () => {
     const doc = await documentFor();
     expect(doc.openapi).toBe("3.1.0");
     expect(doc.info.title).toBe("Brave Search API");
+    // x402scan's listing shows it, having no home page to read one from.
+    expect(doc.info.description).toMatch(/^Web, news, image, video, and place search/);
     expect(doc.info.version).toBe(VERSION);
     expect(Object.keys(doc.paths)).toHaveLength(ENDPOINTS.length);
     // Relative, so a reader resolves it against wherever the document was
@@ -125,6 +127,21 @@ describe("discovery", () => {
     expect(doc.info["x-guidance"]).toContain("No account or API key");
     // x402scan confirms who owns the origin through this address.
     expect(doc.info.contact.email).toBe("searchapi-support@brave.com");
+  });
+
+  it("every_paid_path_is_named_and_tagged_by_its_path", async () => {
+    const doc = await documentFor();
+    const named = Object.values(doc.paths).map(({ get }) => [get.operationId, get.tags]);
+    expect(named).toEqual([
+      ["webSearch", ["web"]],
+      ["llmContext", ["llm"]],
+      ["newsSearch", ["news"]],
+      ["videosSearch", ["videos"]],
+      ["imagesSearch", ["images"]],
+      ["localPlaceSearch", ["local"]],
+      ["localPois", ["local"]],
+      ["localDescriptions", ["local"]],
+    ]);
   });
 
   it("every_paid_path_states_its_dollar_price", async () => {

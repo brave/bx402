@@ -85,6 +85,14 @@ const GUIDANCE =
   "each request is paid with a stablecoin micropayment.";
 
 /**
+ * One line on what the API sells. x402scan shows it beside the title in its
+ * listing, since the origin serves no home page to take one from.
+ */
+const DESCRIPTION =
+  "Web, news, image, video, and place search, plus LLM context, over Brave's independent " +
+  "web index. Paid per request with a stablecoin, no account or API key.";
+
+/**
  * Who answers for the service. x402scan reads it to confirm who owns the
  * origin, and a buyer can write to it about outages or prices.
  */
@@ -127,6 +135,10 @@ interface PaymentInfo {
 
 /** One paid path's `get` operation, as far as the document states it. */
 interface Operation {
+  /** A name for the call, which tools that read the document turn into a function name. */
+  operationId: string;
+  /** The kind of search, so a reader can group the paths. */
+  tags: string[];
   summary: string;
   parameters: Parameter[];
   /**
@@ -143,6 +155,7 @@ export interface DiscoveryDocument {
   openapi: string;
   info: {
     title: string;
+    description: string;
     version: string;
     "x-guidance": string;
     contact: { email: string };
@@ -176,6 +189,7 @@ export function document(ctx: Context): DiscoveryDocument {
     // the document even when the paid surface is unchanged.
     info: {
       title: "Brave Search API",
+      description: DESCRIPTION,
       version: VERSION,
       "x-guidance": GUIDANCE,
       contact: { email: CONTACT_EMAIL },
@@ -208,7 +222,11 @@ function operation(ctx: Context, endpoint: Endpoint): Operation {
       offers: ctx.mpp === undefined ? [] : mpp.offers(ctx.mpp, endpoint.path),
     },
   ].filter((rail) => rail.offers.length > 0);
+  // The path past `/res/v1/`, such as ["local", "place_search"].
+  const segments = endpoint.path.split("/").slice(3);
   const stated: Operation = {
+    operationId: camelCase(segments.join("_")),
+    tags: segments.slice(0, 1),
     summary: endpoint.description,
     parameters: Object.entries(call.params).map(([name, param]) => {
       // Moved out of the schema, since readers show a parameter's own
@@ -240,6 +258,11 @@ function operation(ctx: Context, endpoint: Endpoint): Operation {
     };
   }
   return stated;
+}
+
+/** `local_place_search` as `localPlaceSearch`. */
+function camelCase(name: string): string {
+  return name.replace(/_(.)/g, (_, letter: string) => letter.toUpperCase());
 }
 
 /** What the buyer's guide states about the deployment serving it. */
