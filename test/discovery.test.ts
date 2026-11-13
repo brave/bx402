@@ -116,15 +116,15 @@ describe("discovery", () => {
     expect(doc.openapi).toBe("3.1.0");
     expect(doc.info.title).toBe("Brave Search API");
     // x402scan's listing shows it, having no home page to read one from.
-    expect(doc.info.description).toMatch(/^Web, news, image, video, and place search/);
+    expect(doc.info.description).toMatch(/^Brave Search over its own independent web index/);
+    expect(doc.info.description).toContain("No account or API key");
     expect(doc.info.version).toBe(VERSION);
     expect(Object.keys(doc.paths)).toHaveLength(ENDPOINTS.length);
     // Relative, so a reader resolves it against wherever the document was
     // fetched from, an origin the service itself never learns.
     expect(doc["x-service-info"].docs.llms).toBe(GUIDE_PATH);
     // x402scan requires inline guidance. A missing field fails the match.
-    expect(doc.info["x-guidance"]).toMatch(/^Brave Search over its own independent web index/);
-    expect(doc.info["x-guidance"]).toContain("No account or API key");
+    expect(doc.info["x-guidance"]).toMatch(/^Call llmContext to ground an answer/);
     // x402scan confirms who owns the origin through this address.
     expect(doc.info.contact.email).toBe("searchapi-support@brave.com");
   });
@@ -142,6 +142,31 @@ describe("discovery", () => {
       ["localPois", ["local"]],
       ["localDescriptions", ["local"]],
     ]);
+
+    // The guidance names calls by operation id, so a renamed one must not
+    // leave the guidance pointing at a call that no longer exists.
+    const ids = new Set(named.map(([id]) => id));
+    const mentioned = doc.info["x-guidance"].match(
+      /\b(?:web|llm|news|videos|images|local)[A-Z]\w*/g,
+    );
+    expect(mentioned?.length).toBeGreaterThan(0);
+    for (const id of mentioned ?? []) {
+      expect(ids.has(id), id).toBe(true);
+    }
+  });
+
+  it("the_guidance_names_only_the_protocols_the_deployment_takes", async () => {
+    const guidance = async (overrides: Partial<Config>) =>
+      (await documentFor(overrides)).info["x-guidance"];
+    expect(await guidance({})).toContain("pay it with x402 v2 or MPP and retry");
+    expect(await guidance({ mpp: undefined })).toContain("pay it with x402 v2 and retry");
+    expect(await guidance({ x402: undefined })).toContain("pay it with MPP and retry");
+    // Nothing can be paid, so no protocol is named.
+    expect(await guidance({ x402: undefined, mpp: undefined })).not.toMatch(/402|MPP/);
+    // Every deployment points the agent at the full guide.
+    expect(await guidance({ x402: undefined, mpp: undefined })).toContain(
+      `Read ${GUIDE_PATH} for the full guide.`,
+    );
   });
 
   it("every_paid_path_states_its_dollar_price", async () => {

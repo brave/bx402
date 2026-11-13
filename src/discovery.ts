@@ -74,23 +74,41 @@ interface Price {
 
 /**
  * Short guidance for an agent reading the document, as x402scan's profile asks
- * under `info.x-guidance`: what the API offers, in words. The payment sentence
- * holds for every deployment, whichever rails it runs; `x-payment-info` and the
- * `402` name the exact tokens and chains.
+ * under `info.x-guidance`: which call to make for what, named by operation id,
+ * how to pay, and where the full guide is. An agent gets it whole before its
+ * first call, so it stays short. It names only the protocols the deployment's
+ * rails take; `x-payment-info` and the `402` name the exact tokens and chains.
  */
-const GUIDANCE =
-  "Brave Search over its own independent web index, with real-time search data your " +
-  "chatbots & agents need to generate answers. Complete search results (URLs, text, news, " +
-  "images, and more), plus additional LLM context optimized for AI. No account or API key: " +
-  "each request is paid with a stablecoin micropayment.";
+function agentGuidance(ctx: Context): string {
+  const protocols = [
+    ...(ctx.x402 === undefined ? [] : [x402.NAME]),
+    ...(ctx.mpp === undefined ? [] : [mpp.NAME]),
+  ];
+  return [
+    "Call llmContext to ground an answer: it returns the most relevant passages from the top " +
+      "results, grouped by source URL; size it with maximum_number_of_tokens.",
+    "Call webSearch for ranked links and snippets, and newsSearch, imagesSearch, or " +
+      "videosSearch for those result types.",
+    "For places, call localPlaceSearch, then pass its location ids to localPois for details " +
+      "or localDescriptions for a summary.",
+    // With no rail on nothing can be paid, so the guidance names no protocol.
+    protocols.length === 0
+      ? "Every call is a GET with query parameters."
+      : "Every call is a GET with query parameters; an unpaid request returns a 402, so pay " +
+        `it with ${protocols.join(" or ")} and retry the same request.`,
+    `Read ${GUIDE_PATH} for the full guide.`,
+  ].join(" ");
+}
 
 /**
  * One line on what the API sells. x402scan shows it beside the title in its
  * listing, since the origin serves no home page to take one from.
  */
 const DESCRIPTION =
-  "Web, news, image, video, and place search, plus LLM context, over Brave's independent " +
-  "web index. Paid per request with a stablecoin, no account or API key.";
+  "Brave Search over its own independent web index, with real-time search data your " +
+  "chatbots & agents need to generate answers. Complete search results (URLs, text, news, " +
+  "images, and more), plus additional LLM context optimized for AI. No account or API key: " +
+  "each request is paid with a stablecoin micropayment.";
 
 /**
  * Who answers for the service. x402scan reads it to confirm who owns the
@@ -191,7 +209,7 @@ export function document(ctx: Context): DiscoveryDocument {
       title: "Brave Search API",
       description: DESCRIPTION,
       version: VERSION,
-      "x-guidance": GUIDANCE,
+      "x-guidance": agentGuidance(ctx),
       contact: { email: CONTACT_EMAIL },
     },
     "x-service-info": {

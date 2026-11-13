@@ -86,6 +86,9 @@ export const PROTOCOL: Protocol = {
   mpp: { method: TEMPO_METHOD, intent: "charge", currency: "USD" },
 };
 
+/** How the discovery guidance names this rail to an agent. */
+export const NAME = "MPP";
+
 /**
  * Shared message for every refused payment, so a missing, malformed,
  * non-transaction, and rejected credential all read alike to a client. Which one

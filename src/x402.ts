@@ -93,6 +93,9 @@ const X402_METHOD = "x402";
 /** How the discovery document names this rail among a path's payment protocols. */
 export const PROTOCOL: Protocol = { x402: {} };
 
+/** How the discovery guidance names this rail to an agent. V1 payments are refused. */
+export const NAME = "x402 v2";
+
 /**
  * The networks this rail sells on, in the order offers are advertised: the
  * CAIP-2 id the protocol names, and the viem definition that names the chain
