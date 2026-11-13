@@ -19,9 +19,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "3.1156.0",
-    "@aws-sdk/client-kms": "3.1156.0",
-    "@aws-sdk/client-s3": "3.1148.0",
+    "@aws-sdk/client-dynamodb": "3.1164.0",
+    "@aws-sdk/client-kms": "3.1164.0",
+    "@aws-sdk/client-s3": "3.1164.0",
     "@hono/node-server": "2.1.6",
     "@prometheus-io/client": "0.16.1",
     "@smithy/node-http-handler": "4.12.1",
