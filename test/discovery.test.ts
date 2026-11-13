@@ -120,6 +120,11 @@ describe("discovery", () => {
     // Relative, so a reader resolves it against wherever the document was
     // fetched from, an origin the service itself never learns.
     expect(doc["x-service-info"].docs.llms).toBe(GUIDE_PATH);
+    // x402scan requires inline guidance. A missing field fails the match.
+    expect(doc.info["x-guidance"]).toMatch(/^Brave Search over its own independent web index/);
+    expect(doc.info["x-guidance"]).toContain("No account or API key");
+    // x402scan confirms who owns the origin through this address.
+    expect(doc.info.contact.email).toBe("searchapi-support@brave.com");
   });
 
   it("every_paid_path_states_its_dollar_price", async () => {

@@ -72,6 +72,24 @@ interface Price {
   amount: string;
 }
 
+/**
+ * Short guidance for an agent reading the document, as x402scan's profile asks
+ * under `info.x-guidance`: what the API offers, in words. The payment sentence
+ * holds for every deployment, whichever rails it runs; `x-payment-info` and the
+ * `402` name the exact tokens and chains.
+ */
+const GUIDANCE =
+  "Brave Search over its own independent web index, with real-time search data your " +
+  "chatbots & agents need to generate answers. Complete search results (URLs, text, news, " +
+  "images, and more), plus additional LLM context optimized for AI. No account or API key: " +
+  "each request is paid with a stablecoin micropayment.";
+
+/**
+ * Who answers for the service. x402scan reads it to confirm who owns the
+ * origin, and a buyer can write to it about outages or prices.
+ */
+const CONTACT_EMAIL = "searchapi-support@brave.com";
+
 /** Where the project documents itself for a human reader. */
 const HOMEPAGE = "https://github.com/brave/bx402";
 
@@ -123,7 +141,12 @@ interface Operation {
 /** The discovery document's shape, as far as this service states it. */
 export interface DiscoveryDocument {
   openapi: string;
-  info: { title: string; version: string };
+  info: {
+    title: string;
+    version: string;
+    "x-guidance": string;
+    contact: { email: string };
+  };
   "x-service-info": {
     categories: string[];
     docs: { homepage: string; apiReference: string; llms: string };
@@ -151,7 +174,12 @@ export function document(ctx: Context): DiscoveryDocument {
     openapi: "3.1.0",
     // The build version stands in for the API version, so a release bumps
     // the document even when the paid surface is unchanged.
-    info: { title: "Brave Search API", version: VERSION },
+    info: {
+      title: "Brave Search API",
+      version: VERSION,
+      "x-guidance": GUIDANCE,
+      contact: { email: CONTACT_EMAIL },
+    },
     "x-service-info": {
       categories: ["search"],
       // The guide link is relative for the same reason there is no `servers`
