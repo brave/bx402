@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import type { SupportedResponse } from "@x402/core/types";
 import { validate } from "mppx/discovery";
+import { recoverMessageAddress } from "viem";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Config } from "../src/config.js";
 import {
@@ -127,6 +128,15 @@ describe("discovery", () => {
     expect(doc.info["x-guidance"]).toMatch(/^Call llmContext to ground an answer/);
     // x402scan confirms who owns the origin through this address.
     expect(doc.info.contact.email).toBe("searchapi-support@brave.com");
+  });
+
+  it("the_ownership_proof_is_the_treasury_signing_the_production_origin", async () => {
+    const [proof] = (await documentFor())["x-discovery"].ownershipProofs;
+    const signer = await recoverMessageAddress({
+      message: "https://search.agent.s.brave.app",
+      signature: proof as `0x${string}`,
+    });
+    expect(signer).toBe("0xFFa76529d7e733C7671190b374819d8eDA2b9D04");
   });
 
   it("every_paid_path_is_named_and_tagged_by_its_path", async () => {
