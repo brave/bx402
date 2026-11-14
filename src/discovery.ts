@@ -116,6 +116,27 @@ const DESCRIPTION =
  */
 const CONTACT_EMAIL = "searchapi-support@brave.com";
 
+/**
+ * The treasury's signature over the production origin
+ * ("https://search.agent.s.brave.app"), an EIP-191 personal message. x402scan
+ * recovers the signer and accepts the origin as ours when it matches the
+ * `payTo` of the paid paths. A deployment on another origin serves it too, and
+ * there it simply proves nothing.
+ *
+ * Signed on the Ledger that holds the treasury, where N is the treasury's
+ * account index:
+ *
+ *   cast wallet sign --ledger --mnemonic-derivation-path "m/44'/60'/N'/0/0" \
+ *     "https://search.agent.s.brave.app"
+ *
+ * Anyone can check it against the treasury address:
+ *
+ *   cast wallet verify --address 0xFFa76529d7e733C7671190b374819d8eDA2b9D04 \
+ *     "https://search.agent.s.brave.app" <signature>
+ */
+const OWNERSHIP_PROOF =
+  "0xb94244fef5cce57f7ca0f621eae283e70aef7eb046b6239923b5336684af083721f0d31c51bd3eb586ab9fa77eff5fcdf78cebb9ddad849cd88fc1da5e8220a81c";
+
 /** The product page a catalog links as the service's website. */
 const HOMEPAGE = "https://brave.com/search/api";
 
@@ -183,6 +204,7 @@ export interface DiscoveryDocument {
     docs: { homepage: string; apiReference: string; llms: string };
   };
   paths: Record<string, { get: Operation }>;
+  "x-discovery": { ownershipProofs: string[] };
 }
 
 /**
@@ -220,6 +242,7 @@ export function document(ctx: Context): DiscoveryDocument {
       docs: { homepage: HOMEPAGE, apiReference: API_REFERENCE, llms: GUIDE_PATH },
     },
     paths,
+    "x-discovery": { ownershipProofs: [OWNERSHIP_PROOF] },
   };
 }
 
