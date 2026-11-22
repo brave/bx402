@@ -49,6 +49,17 @@ export async function app(
   // includes requests that match no route.
   hono.use(measure(metrics));
 
+  // The router matches a route by the decoded path, so `/res/v1/web/%73earch`
+  // would reach the web search route, while the price, the 402 and the upstream
+  // call all read the path as sent. A path spelled with percent escapes is
+  // answered like an unlisted path, so each route answers to one spelling only.
+  hono.use(async (c, next) => {
+    if (new URL(c.req.url).pathname !== c.req.path) {
+      return emptyBody(404);
+    }
+    await next();
+  });
+
   // Liveness probe: 200 with an empty body while the server is up.
   hono.on(ALLOWED_METHODS, HEALTH_PATH, () => emptyBody(200));
 
