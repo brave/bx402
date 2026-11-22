@@ -292,6 +292,21 @@ describe("app", () => {
     }
   });
 
+  it("a_percent_encoded_spelling_of_a_served_path_is_404", async () => {
+    const hono = await buildApp(testConfig(), undefined, new Metrics());
+    // The router would match these to a served route by their decoded path,
+    // while the price and the 402 are looked up by the path as sent.
+    for (const path of [
+      "/res/v1/web/%73earch?q=rust",
+      "/%72es/v1/web/search?q=rust",
+      "/openapi%2Ejson",
+    ]) {
+      const response = await hono.request(path);
+      expect(response.status, path).toBe(404);
+      expect(response.headers.get("payment-required"), path).toBeNull();
+    }
+  });
+
   it("unsupported_method_is_405_not_a_payable_402", async () => {
     // A POST must get the plain 405, not a challenge whose payment would buy a 405.
     const response = await (await buildApp(testConfig(), undefined, new Metrics())).request(
